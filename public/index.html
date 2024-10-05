@@ -53,7 +53,7 @@
   //scene.fog = new THREE.Fog( 0x333333, 10, 15 );
 
   // Initialiser la caméra
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight);
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   // set default camera angle
   camera.rotation.x = 1.5;
   camera.rotation.y = 0;
@@ -68,7 +68,7 @@
   const gravity = -0.002;
   let velocity = new THREE.Vector3(0, 0, 0); //Pour la balle
   const damping = 0.98; // Pour réduire la vitesse
-  const restitution = 0.8; 
+  const restitution = 0.4;
   const carPushForce = 0.1;
 
   // Initialiser le rendu
@@ -191,6 +191,7 @@
     scene.add(mesh);
   }
 
+
   // Car
   const carMaterial = new THREE.MeshPhysicalMaterial( {
     color: 0xff0000, metalness: 1.0, roughness: 0.5, clearcoat: 1.0, clearcoatRoughness: 0.03
@@ -223,7 +224,80 @@
   let angleColision = 0;
   let pushForce = 0;
 
+  const wallTexture = new THREE.TextureLoader().load('textures/wall.png');
 
+  // Créez une fonction pour générer un matériau unique avec opacité
+  function createWallMaterial() {
+    return new THREE.MeshBasicMaterial({
+      map: wallTexture,
+      transparent: true,  // Permet l'utilisation de l'opacité
+      opacity: 0  // Opacité initiale à 0
+    });
+  }
+
+  // Créez le matériau
+  const wallMaterial = new THREE.MeshBasicMaterial({
+    map: wallTexture,
+    transparent: true,  // Permet l'utilisation de l'opacité
+    opacity: 0  // Opacité initiale à 0
+  });
+
+  // Créez les murs avec PlaneGeometry
+  const wallGeometry = new THREE.PlaneGeometry(200, 100);
+  const wall1 = new THREE.Mesh(wallGeometry, createWallMaterial());
+  // set rotaion
+  wall1.rotation.x = Math.PI / 2;
+  // set position
+  wall1.position.set(0, 100, 45);
+  scene.add(wall1);
+  // add colider
+  const wall1Collider = new THREE.Box3().setFromObject(wall1);
+
+  const wall2 = new THREE.Mesh(wallGeometry, createWallMaterial());
+  wall2.rotation.x = -(Math.PI / 2);
+  wall2.position.set(0, -100, 45); // Ajustez la position si nécessaire
+  scene.add(wall2);
+  const wall2Collider = new THREE.Box3().setFromObject(wall2);
+
+
+  const wall3 = new THREE.Mesh(wallGeometry, createWallMaterial());
+  wall3.rotation.x = Math.PI / 2;
+  wall3.rotation.y = -(Math.PI / 2);
+  wall3.position.set(100, 0, 45);
+  scene.add(wall3);
+  const wall3Collider = new THREE.Box3().setFromObject(wall3);
+
+  const wall4 = new THREE.Mesh(wallGeometry, createWallMaterial());
+  wall4.rotation.x = Math.PI / 2;
+  wall4.rotation.y = Math.PI / 2;
+  wall4.position.set(-100, 0, 45);
+  scene.add(wall4);
+  const wall4Collider = new THREE.Box3().setFromObject(wall4);
+
+  // Vérifiez la distance entre la caméra et les murs
+  function checkCameraDistance() {
+    const distanceThreshold = 150; // Distance où le mur devient complètement visible
+    const fadeDistance = 50; // Distance où le mur commence à apparaître
+
+    const cameraPosition = camera.position;
+
+    [wall1, wall2, wall3, wall4].forEach(wall => {
+      const distance = wall.position.distanceTo(cameraPosition);
+
+      if (distance < distanceThreshold) {
+        // Calculez l'opacité en fonction de la distance
+        if (distance < fadeDistance) {
+          wall.material.opacity = 1; // Complètement opaque
+        } else {
+          // Interpole l'opacité entre 0 et 1
+          wall.material.opacity = 1 - (distance - fadeDistance) / (distanceThreshold - fadeDistance);
+        }
+        wall.material.visible = true; // Montre le mur
+      } else {
+        wall.material.visible = false; // Cache le mur
+      }
+    });
+  }
   /* socket */
   socket.on('players', (serverPlayers) => {
     for (let id in serverPlayers) {
@@ -259,7 +333,6 @@
 
   // Mise à jour de la position de la balle
     socket.on('ballMoved', (ballPosition) => {
-      console.log(ballPosition);
         ball.position.set(ballPosition.x, ballPosition.y, ballPosition.z);
     });
 
@@ -296,7 +369,6 @@
   });
 
   /* fin socket */
-
 
   function createPlayer(player) {
     const loaderPlayer = new GLTFLoader();
@@ -434,6 +506,46 @@
         carModel.position.add(moveVector);
         pushForce -= 0.01;
     }
+
+    updateBoundingBox();
+    // Collision avec les murs
+    let collisionDetected = false;
+    let wallNormal = new THREE.Vector3();
+
+    if (carBoundingBox.intersectsBox(wall1Collider)) {
+      collisionDetected = true;
+      wallNormal.set(0, 1, 0);  // normale pour le mur 1 (haut)
+    } else if (carBoundingBox.intersectsBox(wall2Collider)) {
+      collisionDetected = true;
+      wallNormal.set(0, 1, 0);  // normale pour le mur 2 (gauche)
+    } else if (carBoundingBox.intersectsBox(wall3Collider)) {
+      collisionDetected = true;
+      wallNormal.set(1, 0, 0);   // normale pour le mur 3 (bas)
+    } else if (carBoundingBox.intersectsBox(wall4Collider)) {
+      collisionDetected = true;
+      wallNormal.set(1, 0, 0);   // normale pour le mur 4 (droite)
+    }
+
+    if (collisionDetected) {
+
+      // Calculer la direction actuelle de la voiture
+      let direction = new THREE.Vector3(Math.sin(angle), Math.cos(angle), 0);
+
+      // Calculer la réflexion (rebond)
+      let reflection = new THREE.Vector3().subVectors(direction, wallNormal.multiplyScalar(2 * direction.dot(wallNormal)));
+
+      // Mettre à jour l'angle en fonction de la réflexion
+      angleColision = Math.atan2(reflection.x, reflection.y);
+
+      // Appliquer une force de rebond
+      pushForce = Math.abs(moveAdvanceSpeed + moveBackwardSpeed) * 2;
+
+      // Réduire la vitesse pour simuler une perte d'énergie lors du rebond
+      moveAdvanceSpeed *= 0.5;
+      moveBackwardSpeed *= 0.5;
+    }
+
+
     // Émettre la nouvelle position de la voiture au serveur
     socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle, id: socket.id });
     if (wheels) {
@@ -442,6 +554,7 @@
       }
     }
   }
+
   function refreshCameraPosition() {
     if (carModel) {
       camera.position.x = carModel.position.x;
@@ -503,6 +616,30 @@
       velocity.z  = -velocity.z  * restitution; // Inverser la vitesse et appliquer le coefficient de restitution
     }
 
+    // gérer les collisions avec les murs
+    let collisionDetected = false;
+    let wallNormal = new THREE.Vector3();
+    if (ballBoundingSphere.intersectsBox(wall1Collider)) {
+      collisionDetected = true;
+      wallNormal.set(0, 1, 0);  // normale pour le mur 1 (haut)
+    } else if (ballBoundingSphere.intersectsBox(wall2Collider)) {
+      collisionDetected = true;
+      wallNormal.set(0, 1, 0);  // normale pour le mur 2 (gauche)
+    } else if (ballBoundingSphere.intersectsBox(wall3Collider)) {
+      collisionDetected = true;
+      wallNormal.set(1, 0, 0);   // normale pour le mur 3 (bas)
+    } else if (ballBoundingSphere.intersectsBox(wall4Collider)) {
+      collisionDetected = true;
+      wallNormal.set(1, 0, 0);   // normale pour le mur 4 (droite)
+    }
+
+    if (collisionDetected) {
+      // Calculer la réflexion (rebond)
+      let reflection = new THREE.Vector3().subVectors(velocity, wallNormal.multiplyScalar(2 * velocity.dot(wallNormal)));
+      // Appliquer la réflexion à la vitesse
+      velocity.copy(reflection);
+    }
+
     // Gérer la friction horizontale (ralentissement)
     velocity.x *= damping;
     velocity.y *= damping;
@@ -528,7 +665,6 @@
       updateBoundingBox();
 
       if (carBoundingBox.intersectsSphere(ballBoundingSphere)) {
-
           const collisionNormal = new THREE.Vector3().subVectors(ball.position, carModel.position).normalize();
           velocity.add(collisionNormal.multiplyScalar(Math.abs(moveAdvanceSpeed + moveBackwardSpeed)));
       }
@@ -536,17 +672,12 @@
       // colision with ither cars
       for (let id in colliders) {
           if (carBoundingBox.intersectsBox(colliders[id]) && id !== socket.id) {
-              console.log('Collision Detected with player ' + id);
               const tempvar = moveAdvanceSpeed;
               moveAdvanceSpeed = -moveBackwardSpeed;
               moveBackwardSpeed = -tempvar;
-            /*const collisionNormal = new THREE.Vector3().subVectors(ball.position, carModel.position).normalize();
-          ball.position.add(collisionNormal.multiplyScalar(0.1));
-
-             */
-            const collisionNormal = new THREE.Vector3().subVectors(carModel.position, players[id].position).normalize();
-            carModel.position.add(collisionNormal.multiplyScalar(0.1));
-            colliders[socket.id].setFromObject(carModel);
+              const collisionNormal = new THREE.Vector3().subVectors(carModel.position, players[id].position).normalize();
+              carModel.position.add(collisionNormal.multiplyScalar(0.1));
+              colliders[socket.id].setFromObject(carModel);
 
               // emit the new position of the car to the server
               //socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id });
@@ -578,6 +709,7 @@
       updateBallPhysics()
       detectCollisions();
       refreshCameraPosition();
+      checkCameraDistance(); // Vérifiez la distance à chaque frame
 
       renderer.render(scene, camera);
     }
