@@ -495,7 +495,7 @@
         carModel.rotation.y += (moveAdvanceSpeed + moveBackwardSpeed) / 10;
       }
     }
-    if (pushForce > 0) {
+    if (pushForce != 0) {
         // Déterminer la direction du déplacement
         let direction = new THREE.Vector3(Math.sin(-angleColision), Math.cos(-angleColision), 0);
 
@@ -504,7 +504,11 @@
 
         // Appliquer le mouvement à la position actuelle
         carModel.position.add(moveVector);
-        pushForce -= 0.01;
+        if (pushForce > 0) {
+          pushForce -= 0.01;
+        } else if (pushForce < 0) {
+          pushForce += 0.01;
+        }
     }
 
     updateBoundingBox();
@@ -528,8 +532,9 @@
 
     if (collisionDetected) {
 
+      let bondAngle = moveAdvanceSpeed > moveBackwardSpeed ? angle : -angle;
       // Calculer la direction actuelle de la voiture
-      let direction = new THREE.Vector3(Math.sin(angle), Math.cos(angle), 0);
+      let direction = new THREE.Vector3(Math.sin(bondAngle), Math.cos(bondAngle), 0);
 
       // Calculer la réflexion (rebond)
       let reflection = new THREE.Vector3().subVectors(direction, wallNormal.multiplyScalar(2 * direction.dot(wallNormal)));
@@ -538,7 +543,7 @@
       angleColision = Math.atan2(reflection.x, reflection.y);
 
       // Appliquer une force de rebond
-      pushForce = Math.abs(moveAdvanceSpeed + moveBackwardSpeed) * 2;
+      pushForce = (moveAdvanceSpeed + moveBackwardSpeed) * 2;
 
       // Réduire la vitesse pour simuler une perte d'énergie lors du rebond
       moveAdvanceSpeed *= 0.5;
@@ -669,7 +674,7 @@
           velocity.add(collisionNormal.multiplyScalar(Math.abs(moveAdvanceSpeed + moveBackwardSpeed)));
       }
 
-      // colision with ither cars
+      // colision with other cars
       for (let id in colliders) {
           if (carBoundingBox.intersectsBox(colliders[id]) && id !== socket.id) {
               const tempvar = moveAdvanceSpeed;
