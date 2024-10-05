@@ -30,6 +30,33 @@
   scene.environment.mapping = THREE.EquirectangularReflectionMapping;
   //scene.fog = new THREE.Fog( 0x333333, 10, 15 );
 
+  //-------------------------------------------------
+  // Ground Geometry and Material
+const textureLoader = new THREE.TextureLoader();
+
+// Load the grass texture
+const grassTexture = textureLoader.load('/textures/grass_texture.jpg');
+grassTexture.wrapS = grassTexture.wrapT = THREE.RepeatWrapping; // Allows the texture to repeat
+grassTexture.repeat.set(25, 25); // Repeat the texture 25 times to cover a larger area
+
+// Optional: Add a normal map or bump map for more detail
+const grassNormalMap = textureLoader.load('/textures/grass_normal.jpg');
+grassNormalMap.wrapS = grassNormalMap.wrapT = THREE.RepeatWrapping;
+grassNormalMap.repeat.set(25, 25);
+
+// Create the ground material using the grass texture
+const groundMaterial = new THREE.MeshStandardMaterial({
+  map: grassTexture,
+  normalMap: grassNormalMap,  // Optional: Adds more realism with bumpiness
+});
+
+// Create the ground plane
+const groundGeometry = new THREE.PlaneGeometry(100, 100); // 100x100 units for the ground
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+ground.rotation.x = -Math.PI / 2; // Rotate to lay flat
+ground.position.y = -1; // Adjust position if needed
+scene.add(ground);
+
   // Initialiser la caméra
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight);
   // set default camera angle
@@ -39,6 +66,15 @@
   let radius = 10;  // Distance constante entre la caméra et le cube
   let angleX = 15;   // Variable pour l'angle en X (horizontal)
   let angleY = 0;   // Variable pour l'angle en Y (vertical)
+
+  //initialiser les var de la balle
+
+  const sizeBall = 0.5;
+  const gravity = -0.02; 
+  let velocity = new THREE.Vector3(0, 0, 0); //Pour la balle
+  const damping = 0.98; // Pour réduire la vitesse
+  const restitution = 0.8; 
+  const carPushForce = 0.1;
 
   // Initialiser le rendu
   const renderer = new THREE.WebGLRenderer();
@@ -68,7 +104,6 @@
   const carMaterial = new THREE.MeshPhysicalMaterial( {
     color: 0xff0000, metalness: 1.0, roughness: 0.5, clearcoat: 1.0, clearcoatRoughness: 0.03
   } );
-
 
   const detailsCarMaterial = new THREE.MeshStandardMaterial( {
     color: 0xffffff, metalness: 1.0, roughness: 0.5
@@ -126,6 +161,16 @@
 
   } );
 
+  //ball 
+
+  const ballGeometry = new THREE.SphereGeometry(1, 32, 32);
+  const ballMaterial = new THREE.MeshStandardMaterial({ color: 0xff4500, metalness: 0.5, roughness: 0.2 });
+  const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+  ball.position.z = 19
+  
+  scene.add(ball);
+
+
   // Fonction pour capturer le pointeur lors du clic
   document.body.addEventListener('click', () => {
     if (!isPointerLocked) {
@@ -149,12 +194,54 @@
       mouseDeltaX = THREE.MathUtils.clamp(mouseDeltaX, -Math.PI / 2, Math.PI / 2);
     }
   });
+  function updateBallPhysics() {
+    // Ajouter l'effet de gravité sur la vitesse verticale
+    velocity.z += gravity;
+  
+    // Appliquer la vitesse à la position de la balle
+    ball.position.add(velocity);
+    
+    // Gérer les collisions avec le terrain (rebonds sur l'axe Y)
+    if (ball.position.z  - 0.5 <= 0) { // La balle touche le sol
+      ball.position.z  = 0.5; // La balle ne passe pas sous le sol
+      velocity.z  = -velocity.z  * restitution; // Inverser la vitesse et appliquer le coefficient de restitution
+    }
+  
+    // Gérer la friction horizontale (ralentissement)
+    velocity.x *= damping;
+    velocity.y *= damping;
+  }
 
+const ballBoundingSphere = new THREE.Sphere(ball.position, 1);  
+let carBoundingBox = new THREE.Box3();
+
+
+function updateBoundingBox() {
+    if (carModel) {
+        carBoundingBox.setFromObject(carModel);
+    }
+}
+
+// Collision detection function
+function detectCollisions() {
+    updateBoundingBox();
+
+    if (carBoundingBox.intersectsSphere(ballBoundingSphere)) {
+        console.log('Collision Detected!');
+
+        const collisionNormal = new THREE.Vector3().subVectors(ball.position, carModel.position).normalize();
+        ball.position.add(collisionNormal.multiplyScalar(0.1));
+    }
+}
   // Fonction d'animation
   function animate() {
     requestAnimationFrame(animate);
+    // effet de rotation
+    ball.rotation.x += 0.01;
+    ball.rotation.y += 0.01;
 
-
+    updateBallPhysics()
+    detectCollisions();
     if (carModel) {
       // Appliquer les mouvements de la souris à la caméra
       angleX = mouseDeltaX;
