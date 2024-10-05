@@ -50,6 +50,13 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('playerMoved', data);
     });
 
+    // Colision entre les joueurs
+    socket.on('collision', (data) => {
+        console.log(data)
+        // Diffuser la position de la balle et des cubes aux autres clients
+        socket.broadcast.emit('collision', data);
+    });
+
     socket.on('ballMoved', (data) => {
         // Diffuser la position de la balle et des cubes aux autres clients
         socket.broadcast.emit('ballMoved', data);
