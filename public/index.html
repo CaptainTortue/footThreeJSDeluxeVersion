@@ -30,33 +30,6 @@
   scene.environment.mapping = THREE.EquirectangularReflectionMapping;
   //scene.fog = new THREE.Fog( 0x333333, 10, 15 );
 
-  //-------------------------------------------------
-  // Ground Geometry and Material
-const textureLoader = new THREE.TextureLoader();
-
-// Load the grass texture
-const grassTexture = textureLoader.load('/textures/grass_texture.jpg');
-grassTexture.wrapS = grassTexture.wrapT = THREE.RepeatWrapping; // Allows the texture to repeat
-grassTexture.repeat.set(25, 25); // Repeat the texture 25 times to cover a larger area
-
-// Optional: Add a normal map or bump map for more detail
-const grassNormalMap = textureLoader.load('/textures/grass_normal.jpg');
-grassNormalMap.wrapS = grassNormalMap.wrapT = THREE.RepeatWrapping;
-grassNormalMap.repeat.set(25, 25);
-
-// Create the ground material using the grass texture
-const groundMaterial = new THREE.MeshStandardMaterial({
-  map: grassTexture,
-  normalMap: grassNormalMap,  // Optional: Adds more realism with bumpiness
-});
-
-// Create the ground plane
-const groundGeometry = new THREE.PlaneGeometry(100, 100); // 100x100 units for the ground
-const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-ground.rotation.x = -Math.PI / 2; // Rotate to lay flat
-ground.position.y = -1; // Adjust position if needed
-scene.add(ground);
-
   // Initialiser la caméra
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight);
   // set default camera angle
