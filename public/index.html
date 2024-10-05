@@ -27,6 +27,11 @@
   const scene = new THREE.Scene();
   scene.background = new THREE.Color( 0x333333 );
   scene.environment = new RGBELoader().load( '/textures/venice_sunset_1k.hdr' );
+ /* const textureLoader = new THREE.TextureLoader();
+  const environmentTexture = textureLoader.load('/textures/ciel.png'); // Utilise le format converti (ex: PNG)
+
+  // Assigner la texture à l'environnement de la scène
+  scene.environment = environmentTexture;*/
   scene.environment.mapping = THREE.EquirectangularReflectionMapping;
   //scene.fog = new THREE.Fog( 0x333333, 10, 15 );
 
@@ -64,6 +69,14 @@
   // position of th
   scene.add( grid );
 
+  // ajouter un plateau d'exemple, comme un mur
+  const wall = new THREE.BoxGeometry( 10, 2, 0.5 );
+  const wallMaterial = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
+  const wallMesh = new THREE.Mesh( wall, wallMaterial );
+  wallMesh.position.z = -0.25;
+  scene.add( wallMesh );
+
+
   // Car
   const carMaterial = new THREE.MeshPhysicalMaterial( {
     color: 0xff0000, metalness: 1.0, roughness: 0.5, clearcoat: 1.0, clearcoatRoughness: 0.03
@@ -84,6 +97,13 @@
   dracoLoader.setDecoderPath( 'jsm/libs/draco/gltf/' );
 
   let carModel;  // Declare a variable to hold the car model
+  let wheels;  // Declare a variable to hold the wheels
+  let moveAdvanceSpeed = 0;  // Variable to store the movement power of the car
+  let maxAdvanceSpeed = .1;  // Maximum speed of the car
+  let moveBackwardSpeed = 0;  // Variable to store the movement power of the car
+  let maxBackwardSpeed = -.1;  // Maximum speed of the car
+
+  let keyStates = {};
 
   const loader = new GLTFLoader();
   loader.setDRACOLoader( dracoLoader );
@@ -101,7 +121,7 @@
     carModel.getObjectByName( 'trim' ).material = detailsCarMaterial;
 
     carModel.getObjectByName( 'glass' ).material = glassCarMaterial;
-    const wheels = [];
+    wheels = [];
     wheels.push(
             carModel.getObjectByName( 'wheel_fl' ),
             carModel.getObjectByName( 'wheel_fr' ),
@@ -150,12 +170,81 @@
     }
   });
 
+  function moveCar() {
+    // if player key advance is pressed, upgrad the advancePower
+    if (keyStates['KeyW'] || keyStates['ArrowUp']) {
+      moveAdvanceSpeed = (moveAdvanceSpeed + 0.0001 > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + 0.0001;
+    } else {
+      moveAdvanceSpeed = (moveAdvanceSpeed - 0.0001 < 0) ? 0 : moveAdvanceSpeed - 0.0001;
+    }
+
+    // if player key backward is pressed, upgrad the advancePower
+    if (keyStates['KeyS'] || keyStates['ArrowDown']) {
+      moveBackwardSpeed = (moveBackwardSpeed - 0.0001 < maxBackwardSpeed) ? maxBackwardSpeed : moveBackwardSpeed - 0.0001;
+    } else {
+      moveBackwardSpeed = (moveBackwardSpeed + 0.0001 > 0) ? 0 : moveBackwardSpeed + 0.0001;
+    }
+
+    if (moveBackwardSpeed != 0 || moveAdvanceSpeed != 0) {
+      // if player key right is pressed, rotate the car to the right
+      if (keyStates['KeyD'] || keyStates['ArrowRight']) {
+        carModel.rotation.y -= (moveAdvanceSpeed + moveBackwardSpeed) / 10;
+      }
+
+      // if player key left is pressed, rotate the car to the left
+      if (keyStates['KeyA'] || keyStates['ArrowLeft']) {
+        carModel.rotation.y += (moveAdvanceSpeed + moveBackwardSpeed) / 10;
+      }
+    }
+
+    if (wheels) {
+      for (let i = 0; i < wheels.length; i++) {
+
+        wheels[i].rotation.x = moveAdvanceSpeed * Math.PI * 2;
+
+      }
+
+      // advance the car
+      // get angle of the car
+      let angle = carModel.rotation.y;
+      // get the x and y position of the car
+      let x = carModel.position.x;
+      let y = carModel.position.y;
+      // calculate the new position of the car, don't forget to add the moveBackwardSpeed and to set the angle to negative
+      x += Math.sin(-angle) * (moveAdvanceSpeed + moveBackwardSpeed);
+      y += Math.cos(-angle) * (moveAdvanceSpeed + moveBackwardSpeed);
+      // set the new position of the car
+      carModel.position.x = x;
+      carModel.position.y = y;
+    }
+  }
+
+  function refreshCameraPosition() {
+
+    if (carModel) {
+      camera.position.x = carModel.position.x;
+      camera.position.y = carModel.position.y;
+
+      // Appliquer les mouvements de la souris à la caméra
+      angleX = mouseDeltaX;
+      angleY = mouseDeltaY;
+
+      // Calculer la position de la caméra en coordonnées sphériques pour orbiter autour da la voiture
+      camera.position.x += radius * Math.cos(angleY) * Math.sin(angleX);
+      camera.position.y += radius * Math.sin(angleY);  // Déplacement vertical avec l'angle Y
+      camera.position.z = radius * Math.cos(angleY) * Math.cos(angleX);
+
+      camera.lookAt(carModel.position);  // Faire en sorte que la caméra regarde toujours la voiture
+    }
+  }
+
   // Fonction d'animation
   function animate() {
     requestAnimationFrame(animate);
 
+    moveCar()
 
-    if (carModel) {
+    /*if (carModel) {
       // Appliquer les mouvements de la souris à la caméra
       angleX = mouseDeltaX;
       angleY = mouseDeltaY;
@@ -166,7 +255,8 @@
       camera.position.z = radius * Math.cos(angleY) * Math.cos(angleX);
 
       camera.lookAt(carModel.position);  // Faire en sorte que la caméra regarde toujours la voiture
-    }
+    }*/
+    refreshCameraPosition();
 
     renderer.render(scene, camera);
   }
@@ -178,6 +268,17 @@
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    keyStates[ event.code ] = true;
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
+      event.preventDefault(); // Empêche le défilement de la page ou le mouvement de la caméra par défaut
+    }
+  });
+
+  document.addEventListener( 'keyup', ( event ) => {
+    keyStates[ event.code ] = false;
   });
 </script>
 </body>
