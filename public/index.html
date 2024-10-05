@@ -20,6 +20,28 @@
   const clock = new THREE.Clock();
   const STEPS_PER_FRAME = 5;
 
+  const grassShader = {
+    vert: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        vec3 pos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      }
+    `,
+    frag: `
+      uniform sampler2D textures[2];
+      uniform float iTime;
+      varying vec2 vUv;
+      
+      void main() {
+        vec3 grassColor = texture2D(textures[0], vUv).rgb;
+        vec3 cloudColor = texture2D(textures[1], vUv * 0.1).rgb; // Adding cloud effect
+        gl_FragColor = vec4(grassColor * 0.5 + cloudColor * 0.5, 1.0);
+      }
+    `
+  };
+
   // Initialiser Socket.IO
   const socket = io("http://localhost:5000");
 
@@ -72,6 +94,102 @@
   grid.position.z = -0.5;
   // position of th
   scene.add( grid );
+
+  //Grass Field
+  // Parameters for Grass Field
+  const PLANE_SIZE_Z = 200;
+  const PLANE_SIZE_X = 200;
+  const BLADE_COUNT = 100000; // Reduced for performance
+  const BLADE_WIDTH = 0.1;
+  const BLADE_HEIGHT = 0.2;
+  const BLADE_HEIGHT_VARIATION = 0.4;
+
+  // Grass Textures
+  const grassTexture = new THREE.TextureLoader().load('textures/grass.jpg');
+  const cloudTexture = new THREE.TextureLoader().load('textures/cloud.jpg');
+  cloudTexture.wrapS = cloudTexture.wrapT = THREE.RepeatWrapping;
+
+  // Time Uniform
+  const timeUniform = { type: 'f', value: 0.0 };
+  const grassUniforms = {
+    textures: { value: [grassTexture, cloudTexture] },
+    iTime: timeUniform
+  };
+
+  const grassMaterial = new THREE.ShaderMaterial({
+    uniforms: grassUniforms,
+    vertexShader: grassShader.vert,
+    fragmentShader: grassShader.frag,
+    side: THREE.DoubleSide
+  });
+
+  generateField();
+
+  function generateField() {
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+    const colors = [];
+
+    for (let i = 0; i < BLADE_COUNT; i++) {
+      const pos = new THREE.Vector3(
+        (Math.random() - 0.5) * PLANE_SIZE_X,
+        (Math.random() - 0.5) * PLANE_SIZE_Z
+      ,0 -0.5
+      );
+
+      const uv = [(pos.x + PLANE_SIZE_X / 2) / PLANE_SIZE_X, (pos.z + PLANE_SIZE_Z / 2) / PLANE_SIZE_Z];
+      const blade = generateBlade(pos, i * 5, uv);
+
+      blade.verts.forEach(vert => {
+        positions.push(...vert.pos);
+        uvs.push(...vert.uv);
+        colors.push(...vert.color);
+      });
+      blade.indices.forEach(indice => indices.push(indice));
+    }
+
+    function generateBlade(center, vArrOffset, uv) {
+      const height = BLADE_HEIGHT + (Math.random() * BLADE_HEIGHT_VARIATION);
+      const yaw = Math.random() * Math.PI * 2;
+      const yawUnitVec = new THREE.Vector3(Math.sin(yaw), 0, -Math.cos(yaw));
+  
+      const bl = center.clone().add(yawUnitVec.clone().multiplyScalar(BLADE_WIDTH / 2));
+      const br = center.clone().add(yawUnitVec.clone().multiplyScalar(-BLADE_WIDTH / 2));
+      const tl = center.clone().add(yawUnitVec.clone().multiplyScalar(BLADE_WIDTH / 4));
+      const tr = center.clone().add(yawUnitVec.clone().multiplyScalar(-BLADE_WIDTH / 4));
+      const tc = center.clone().add(new THREE.Vector3(0, 0,height));
+  
+      tl.z += height / 2; // Ajustez la hauteur
+      tr.z += height / 2; // Ajustez la hauteur
+      tc.z += height; // Ajustez la hauteur
+  
+      const verts = [
+        { pos: bl.toArray(), uv: uv, color: [0, 0, 0] },
+        { pos: br.toArray(), uv: uv, color: [0, 0, 0] },
+        { pos: tr.toArray(), uv: uv, color: [0.5, 0.5, 0.5] },
+        { pos: tl.toArray(), uv: uv, color: [0.5, 0.5, 0.5] },
+        { pos: tc.toArray(), uv: uv, color: [1, 1, 1] }
+      ];
+  
+      const indices = [
+        vArrOffset, vArrOffset + 1, vArrOffset + 2,
+        vArrOffset + 2, vArrOffset + 4, vArrOffset + 3,
+        vArrOffset + 3, vArrOffset, vArrOffset + 2
+      ];
+  
+      return { verts, indices };
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geom.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+    geom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geom, grassMaterial);
+    scene.add(mesh);
+  }
 
   // Car
   const carMaterial = new THREE.MeshPhysicalMaterial( {
@@ -220,7 +338,7 @@
   function moveCar() {
     // if player key advance is pressed, upgrad the advancePower
     if (keyStates['KeyW'] || keyStates['ArrowUp']) {
-      moveAdvanceSpeed = (moveAdvanceSpeed + 0.0001 > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + 0.0001;
+      moveAdvanceSpeed = (moveAdvanceSpeed + 0.2 > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + 0.2;
     } else {
       moveAdvanceSpeed = (moveAdvanceSpeed - 0.0002 < 0) ? 0 : moveAdvanceSpeed - 0.0002;
     }
@@ -355,6 +473,9 @@ function detectCollisions() {
     // effet de rotation
     ball.rotation.x += 0.01;
     ball.rotation.y += 0.01;
+
+    const elapsedTime = clock.getElapsedTime();
+    grassUniforms.iTime.value = elapsedTime;
 
     updateBallPhysics()
     detectCollisions();
