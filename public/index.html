@@ -94,13 +94,16 @@
   let carModel;  // Declare a variable to hold the car model
   let wheels;  // Declare a variable to hold the wheels
   let moveAdvanceSpeed = 0;  // Variable to store the movement power of the car
-  let maxAdvanceSpeed = .1;  // Maximum speed of the car
+  let maxAdvanceSpeed = .5;  // Maximum speed of the car
   let moveBackwardSpeed = 0;  // Variable to store the movement power of the car
-  let maxBackwardSpeed = -.1;  // Maximum speed of the car
+  let maxBackwardSpeed = -.5;  // Maximum speed of the car
   let keyStates = {};
   // Liste des cubes joueurs et colliders
   const players = {};
   const colliders = {};
+
+  let angleColision = 0;
+  let pushForce = 0;
 
 
   /* socket */
@@ -116,6 +119,7 @@
     if (players[id]) {
       scene.remove(players[id]);
       delete players[id];
+      delete colliders[id];
     }
   });
   // Mise à jour de la position des joueurs
@@ -128,7 +132,43 @@
       colliders[user.id].setFromObject(players[user.id]); // Mettre à jour le collider
     }
   });
+
+  // Colision
+  socket.on('collision', (data) => {
+    console.log(data.id, socket.id);
+    if (players[data.id2] !== undefined && players[data.id] !== undefined && data.id2 == socket.id) {
+
+      angleColision = data.angle;
+      pushForce = data.pushForce * 1.25;
+
+      /*
+      // Déterminer la direction du déplacement
+      let direction = new THREE.Vector3(Math.sin(-data.angle), Math.cos(-data.angle), 0);
+
+      let moveVector = new THREE.Vector3();
+      // Ajouter la vitesse dans la direction calculée
+      moveVector.addScaledVector(direction, data.pushForce);
+
+      // Appliquer le mouvement à la position actuelle
+      carModel.position.add(moveVector);
+
+
+      // Appliquer la force dans la direction opposée
+      //const pushVector = oppositeDirection.multiplyScalar(data.pushForce*10);
+      //moveVector.addScaledVector(direction, moveAdvanceSpeed + moveBackwardSpeed);
+
+      // Modifier la position de la voiture (repoussée dans la direction opposée au mouvement de l'autre voiture)
+
+      // Optionnel: Mettre à jour la position sur le serveur
+      socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id });
+      */
+
+    }
+  });
+
   /* fin socket */
+
+
   function createPlayer(player) {
     console.log(player);
     const loaderPlayer = new GLTFLoader();
@@ -213,48 +253,61 @@
     scene.add( carModel );
 
     players[socket.id] = carModel;
+    colliders[socket.id] = new THREE.Box3().setFromObject(carModel);
     // emit the new player to the server
     socket.emit('playerStartInfos', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id });
   } );
 
   function moveCar() {
+    if (!carModel) return;
+    let moveVector = new THREE.Vector3();
     // if player key advance is pressed, upgrad the advancePower
     if (keyStates['KeyW'] || keyStates['ArrowUp']) {
-      moveAdvanceSpeed = (moveAdvanceSpeed + 0.0001 > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + 0.0001;
+      moveAdvanceSpeed = (moveAdvanceSpeed + 0.001 > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + 0.001;
     } else {
-      moveAdvanceSpeed = (moveAdvanceSpeed - 0.0002 < 0) ? 0 : moveAdvanceSpeed - 0.0002;
+      moveAdvanceSpeed = (moveAdvanceSpeed - 0.002 < 0) ? 0 : moveAdvanceSpeed - 0.002;
     }
     // if player key backward is pressed, upgrad the advancePower
     if (keyStates['KeyS'] || keyStates['ArrowDown']) {
-      moveBackwardSpeed = (moveBackwardSpeed - 0.0001 < maxBackwardSpeed) ? maxBackwardSpeed : moveBackwardSpeed - 0.0001;
+      moveBackwardSpeed = (moveBackwardSpeed - 0.001 < maxBackwardSpeed) ? maxBackwardSpeed : moveBackwardSpeed - 0.001;
     } else {
-      moveBackwardSpeed = (moveBackwardSpeed + 0.0002 > 0) ? 0 : moveBackwardSpeed + 0.0002;
+      moveBackwardSpeed = (moveBackwardSpeed + 0.002 > 0) ? 0 : moveBackwardSpeed + 0.002;
     }
-    if (moveBackwardSpeed != 0 || moveAdvanceSpeed != 0) {
-      // advance the car
-      // get angle of the car
-      let angle = carModel.rotation.y;
-      // get the x and y position of the car
-      let x = carModel.position.x;
-      let y = carModel.position.y;
-      // calculate the new position of the car, don't forget to add the moveBackwardSpeed and to set the angle to negative
-      x += Math.sin(-angle) * (moveAdvanceSpeed + moveBackwardSpeed);
-      y += Math.cos(-angle) * (moveAdvanceSpeed + moveBackwardSpeed);
-      // set the new position of the car
-      carModel.position.x = x;
-      carModel.position.y = y;
-      // emit the new position of the car to the server
-      socket.emit('move', { x, y, angle, id: socket.id });
+    let angle = carModel.rotation.y;
+    // Calculer le vecteur de mouvement en fonction de l'angle de la voiture
+    if (moveBackwardSpeed !== 0 || moveAdvanceSpeed !== 0) {
+      // Récupérer l'angle actuel de la voiture
 
-      // if player key right is pressed, rotate the car to the right
+      // Déterminer la direction du déplacement
+      let direction = new THREE.Vector3(Math.sin(-angle), Math.cos(-angle), 0);
+
+      // Ajouter la vitesse dans la direction calculée
+      moveVector.addScaledVector(direction, moveAdvanceSpeed + moveBackwardSpeed);
+
+      // Appliquer le mouvement à la position actuelle
+      carModel.position.add(moveVector);
+
+      // Rotation de la voiture en fonction des touches gauche et droite
       if (keyStates['KeyD'] || keyStates['ArrowRight']) {
         carModel.rotation.y -= (moveAdvanceSpeed + moveBackwardSpeed) / 10;
       }
-      // if player key left is pressed, rotate the car to the left
       if (keyStates['KeyA'] || keyStates['ArrowLeft']) {
         carModel.rotation.y += (moveAdvanceSpeed + moveBackwardSpeed) / 10;
       }
     }
+    if (pushForce > 0) {
+        // Déterminer la direction du déplacement
+        let direction = new THREE.Vector3(Math.sin(-angleColision), Math.cos(-angleColision), 0);
+
+        // Ajouter la vitesse dans la direction calculée
+        moveVector.addScaledVector(direction, pushForce);
+
+        // Appliquer le mouvement à la position actuelle
+        carModel.position.add(moveVector);
+        pushForce -= 0.01;
+    }
+    // Émettre la nouvelle position de la voiture au serveur
+    socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle, id: socket.id });
     if (wheels) {
       for (let i = 0; i < wheels.length; i++) {
         wheels[i].rotation.x = moveAdvanceSpeed * Math.PI * 2;
@@ -309,6 +362,7 @@
       mouseDeltaX = THREE.MathUtils.clamp(mouseDeltaX, -Math.PI / 2, Math.PI / 2);
     }
   });
+
   function updateBallPhysics() {
     // Ajouter l'effet de gravité sur la vitesse verticale
     velocity.z += gravity;
@@ -327,43 +381,72 @@
     velocity.y *= damping;
   }
 
-const ballBoundingSphere = new THREE.Sphere(ball.position, 1);  
-let carBoundingBox = new THREE.Box3();
+  const ballBoundingSphere = new THREE.Sphere(ball.position, 1);
+  let carBoundingBox = new THREE.Box3();
 
 
-function updateBoundingBox() {
-    if (carModel) {
-        carBoundingBox.setFromObject(carModel);
-    }
-}
-
-// Collision detection function
-function detectCollisions() {
-    updateBoundingBox();
-
-    if (carBoundingBox.intersectsSphere(ballBoundingSphere)) {
-        console.log('Collision Detected!');
-
-        const collisionNormal = new THREE.Vector3().subVectors(ball.position, carModel.position).normalize();
-        ball.position.add(collisionNormal.multiplyScalar(0.1));
-    }
-}
-  // Fonction d'animation
-  function animate() {
-    requestAnimationFrame(animate);
-    moveCar();
-    // effet de rotation
-    ball.rotation.x += 0.01;
-    ball.rotation.y += 0.01;
-
-    updateBallPhysics()
-    detectCollisions();
-    refreshCameraPosition();
-
-    renderer.render(scene, camera);
+  function updateBoundingBox() {
+      if (carModel) {
+          carBoundingBox.setFromObject(carModel);
+      }
   }
 
-  animate();
+  // Collision detection function
+  function detectCollisions() {
+      updateBoundingBox();
+
+      if (carBoundingBox.intersectsSphere(ballBoundingSphere)) {
+          console.log('Collision Detected!');
+
+          const collisionNormal = new THREE.Vector3().subVectors(ball.position, carModel.position).normalize();
+          ball.position.add(collisionNormal.multiplyScalar(0.1));
+      }
+
+      // colision with ither cars
+      for (let id in colliders) {
+          if (carBoundingBox.intersectsBox(colliders[id]) && id !== socket.id) {
+              console.log('Collision Detected with player ' + id);
+              const tempvar = moveAdvanceSpeed;
+              moveAdvanceSpeed = -moveBackwardSpeed;
+              moveBackwardSpeed = -tempvar;
+            /*const collisionNormal = new THREE.Vector3().subVectors(ball.position, carModel.position).normalize();
+          ball.position.add(collisionNormal.multiplyScalar(0.1));
+
+             */
+            const collisionNormal = new THREE.Vector3().subVectors(carModel.position, players[id].position).normalize();
+            carModel.position.add(collisionNormal.multiplyScalar(0.1));
+
+              // emit the new position of the car to the server
+              //socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id });
+              socket.emit('collision', { id: socket.id, id2: id, angle: carModel.rotation.y, pushForce: Math.abs(moveAdvanceSpeed + moveBackwardSpeed) });
+          }
+      }
+  }
+
+  const desiredFPS = 60;  // Le nombre d'images par seconde souhaité
+  const timeStep = 1000 / desiredFPS;  // Temps en millisecondes entre chaque frame (16.67ms pour 60fps)
+  let lastFrameTime = 0;
+
+  // Fonction d'animation
+  function animate(time) {
+    const deltaTime = time - lastFrameTime;
+    if (deltaTime >= timeStep) {
+      lastFrameTime = time;
+      moveCar();
+      // effet de rotation
+      ball.rotation.x += 0.01;
+      ball.rotation.y += 0.01;
+
+      updateBallPhysics()
+      detectCollisions();
+      refreshCameraPosition();
+
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(animate);
+  }
+
+  requestAnimationFrame(animate);
 
   document.addEventListener('keydown', (event) => {
     keyStates[ event.code ] = true;
