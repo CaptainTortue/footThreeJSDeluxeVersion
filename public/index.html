@@ -232,6 +232,12 @@
       }
     }
   });
+
+  socket.on("ballPosition", (ballPosition) => {
+    ball.position.set(ballPosition.x, ballPosition.y, ballPosition.z);
+    scene.add(ball);
+  });
+
   // Suppression d'un joueur déconnecté
   socket.on('playerDisconnected', (id) => {
     if (players[id]) {
@@ -251,9 +257,14 @@
     }
   });
 
+  // Mise à jour de la position de la balle
+    socket.on('ballMoved', (ballPosition) => {
+      console.log(ballPosition);
+        ball.position.set(ballPosition.x, ballPosition.y, ballPosition.z);
+    });
+
   // Colision
   socket.on('collision', (data) => {
-    console.log(data.id, socket.id);
     if (players[data.id2] !== undefined && players[data.id] !== undefined && data.id2 == socket.id) {
 
       angleColision = data.angle;
@@ -288,7 +299,6 @@
 
 
   function createPlayer(player) {
-    console.log(player);
     const loaderPlayer = new GLTFLoader();
     loaderPlayer.setDRACOLoader( dracoLoader );
     loaderPlayer.load( 'models/gltf/ferrari.glb', function ( gltf ) {
@@ -447,14 +457,12 @@
     }
   }
 
-  //ball 
+  //ball
 
   const ballGeometry = new THREE.SphereGeometry(1, 32, 32);
   const ballMaterial = new THREE.MeshStandardMaterial({ color: 0xff4500, metalness: 0.5, roughness: 0.2 });
   const ball = new THREE.Mesh(ballGeometry, ballMaterial);
-  ball.position.z = 19
-  
-  scene.add(ball);
+  ball.position.z = 14; // mise en place de la balle
 
 
   // Fonction pour capturer le pointeur lors du clic
@@ -482,21 +490,27 @@
   });
 
   function updateBallPhysics() {
+    const oldPosition = ball.position.clone();
     // Ajouter l'effet de gravité sur la vitesse verticale
     velocity.z += gravity;
-  
+
     // Appliquer la vitesse à la position de la balle
     ball.position.add(velocity);
-    
+
     // Gérer les collisions avec le terrain (rebonds sur l'axe Y)
     if (ball.position.z  - 0.5 <= 0) { // La balle touche le sol
       ball.position.z  = 0.5; // La balle ne passe pas sous le sol
       velocity.z  = -velocity.z  * restitution; // Inverser la vitesse et appliquer le coefficient de restitution
     }
-  
+
     // Gérer la friction horizontale (ralentissement)
     velocity.x *= damping;
     velocity.y *= damping;
+
+    if (oldPosition.distanceTo(ball.position) > 0.01) {
+      // Émettre la position de la balle au serveur
+      socket.emit('ballMoved', { x: ball.position.x, y: ball.position.y, z: ball.position.z });
+    }
   }
 
   const ballBoundingSphere = new THREE.Sphere(ball.position, 1);
@@ -514,10 +528,9 @@
       updateBoundingBox();
 
       if (carBoundingBox.intersectsSphere(ballBoundingSphere)) {
-          console.log('Collision Detected!');
 
           const collisionNormal = new THREE.Vector3().subVectors(ball.position, carModel.position).normalize();
-          ball.position.add(collisionNormal.multiplyScalar(0.1));
+          velocity.add(collisionNormal.multiplyScalar(Math.abs(moveAdvanceSpeed + moveBackwardSpeed)));
       }
 
       // colision with ither cars
@@ -533,6 +546,7 @@
              */
             const collisionNormal = new THREE.Vector3().subVectors(carModel.position, players[id].position).normalize();
             carModel.position.add(collisionNormal.multiplyScalar(0.1));
+            colliders[socket.id].setFromObject(carModel);
 
               // emit the new position of the car to the server
               //socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id });

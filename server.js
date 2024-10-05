@@ -6,6 +6,12 @@ const server = require("http").createServer(app);
 
 const players = {};
 
+const ball = {
+    x: 0,
+    y: 0,
+    z: -.5
+}
+
 const PORT = 5000;
 
 const io = Socket(server, {
@@ -22,6 +28,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Lorsqu'un client se connecte
 io.on('connection', (socket) => {
     //console.log('Un joueur s\'est connecté :', socket.id);
+
+    // emit ball position
+    console.log('ballPosition', {x: ball.x, y: ball.y, z: ball.z})
+    socket.emit('ballPosition', {x: ball.x, y: ball.y, z: ball.z});
 
     // get infos from player
     socket.on('playerStartInfos', (data) => {
@@ -57,9 +67,23 @@ io.on('connection', (socket) => {
         socket.broadcast.emit('collision', data);
     });
 
+    socket.on('updateBall', () => {
+        if (ball.z  - .5 <= 0) { // La balle touche le sol
+            ball.z  = .5; // La balle ne passe pas sous le sol
+        } else {
+            ball.z  -= 0.02; // La balle tombe
+        }
+        socket.broadcast.emit('ballMoved', {x: ball.x, y: ball.y, z: ball.z});
+        //fn({x: ball.x, y: ball.y, z: ball.z});
+    });
+
     socket.on('ballMoved', (data) => {
+        ball.x = data.x;
+        ball.y = data.y;
+        ball.z = data.z;
         // Diffuser la position de la balle et des cubes aux autres clients
         socket.broadcast.emit('ballMoved', data);
+        //fn({x: ball.x, y: ball.y, z: ball.z});
     });
 
     socket.on('goal', (data) => {
