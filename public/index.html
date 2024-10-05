@@ -338,7 +338,7 @@
   function moveCar() {
     // if player key advance is pressed, upgrad the advancePower
     if (keyStates['KeyW'] || keyStates['ArrowUp']) {
-      moveAdvanceSpeed = (moveAdvanceSpeed + 0.2 > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + 0.2;
+      moveAdvanceSpeed = (moveAdvanceSpeed + 0.0001 > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + 0.0001;
     } else {
       moveAdvanceSpeed = (moveAdvanceSpeed - 0.0002 < 0) ? 0 : moveAdvanceSpeed - 0.0002;
     }
