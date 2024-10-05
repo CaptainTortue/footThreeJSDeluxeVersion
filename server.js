@@ -23,34 +23,36 @@ app.use(express.static(path.join(__dirname, 'public')));
 io.on('connection', (socket) => {
     //console.log('Un joueur s\'est connecté :', socket.id);
 
-    // Chaque joueur a aussi une couleur aléatoire.
-    players[socket.id] = {
-        id: socket.id, // ID unique pour identifier le joueur
-        x: Math.random() * 5 - 3, // Position X du joueur (aléatoire)
-        y: 0, // Position Y (0 car les joueurs sont sur le sol)
-        z: Math.random() * 5 - 3, // Position Z du joueur (aléatoire)
-    };
-    console.log(players[socket.id].x, players[socket.id].z)
-
-    if (Object.entries(players).filter( infos => infos[1].team === 1).length > Object.entries(players).filter(infos => infos[1].team === 2).length) {
-        players[socket.id].color = "orange"
-        players[socket.id].team = 2;
-    } else {
-        players[socket.id].color = "red"
-        players[socket.id].team = 1;
-    }
-    //console.log(players)
-    io.sockets.emit("players", players);
+    // get infos from player
+    socket.on('playerStartInfos', (data) => {
+        players[socket.id] = {
+            x: data.x,
+            y: data.y,
+            z: data.z,
+            id: socket.id,
+            angle: data.angle
+        }
+        if (Object.entries(players).filter( infos => infos[1].team === 1).length > Object.entries(players).filter(infos => infos[1].team === 2).length) {
+            players[socket.id].team = 2;
+        } else {
+            players[socket.id].team = 1;
+        }
+        io.sockets.emit("players", players);
+    });
 
     // Envoyer la position des objets lorsque le client demande une mise à jour
-    socket.on('updatePosition', (data) => {
-      // Diffuser la position de la balle et des cubes aux autres clients
-      socket.broadcast.emit('playerMoved', data);
+    socket.on('move', (data) => {
+        players[socket.id].x = data.x;
+        players[socket.id].y = data.y;
+        players[socket.id].z = data.z;
+        players[socket.id].angle = data.angle;
+        // Diffuser la position de la balle et des cubes aux autres clients
+        socket.broadcast.emit('playerMoved', data);
     });
 
     socket.on('ballMoved', (data) => {
-      // Diffuser la position de la balle et des cubes aux autres clients
-      socket.broadcast.emit('ballMoved', data);
+        // Diffuser la position de la balle et des cubes aux autres clients
+        socket.broadcast.emit('ballMoved', data);
     });
 
     socket.on('goal', (data) => {
@@ -60,7 +62,7 @@ io.on('connection', (socket) => {
 
     // Lorsqu'un client se déconnecte
     socket.on('disconnect', () => {
-      console.log('Un joueur s\'est déconnecté :', socket.id);
+        console.log('Un joueur s\'est déconnecté :', socket.id);
 
         // Retirer le joueur de la liste des joueurs connectés
         delete players[socket.id];
@@ -70,6 +72,6 @@ io.on('connection', (socket) => {
     });
 });
 
-  server.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log("listening on PORT: ", PORT);
 });
