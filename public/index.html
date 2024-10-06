@@ -189,12 +189,6 @@
     scene.add(mesh);
   }
 
-
-  // Car
-  const carMaterial = new THREE.MeshPhysicalMaterial( {
-    color: 0xff0000, metalness: 1.0, roughness: 0.5, clearcoat: 1.0, clearcoatRoughness: 0.03
-  } );
-
   const detailsCarMaterial = new THREE.MeshStandardMaterial( {
     color: 0xffffff, metalness: 1.0, roughness: 0.5
   } );
@@ -218,6 +212,7 @@
   // Liste des cubes joueurs et colliders
   const players = {};
   const colliders = {};
+  let playerTeam;
   let scoreTeam1 = 0;
   let scoreTeam2 = 0;
 
@@ -234,6 +229,9 @@
       opacity: 0  // Opacité initiale à 0
     });
   }
+
+  // Text score
+  let loaderTextLocal;
 
   // Créez le matériau
   const wallMaterial = new THREE.MeshBasicMaterial({
@@ -275,14 +273,14 @@
   const wall4Collider = new THREE.Box3().setFromObject(wall4);
 
   // Ajouter les cages de but
-  const goalTexture1 = new THREE.TextureLoader().load('textures/goal.png');
+  const goalTexture1 = new THREE.TextureLoader().load('textures/goal1.png');
   const goalGeometry = new THREE.BoxGeometry(10, 2, 2);
   const goalMaterial = new THREE.MeshBasicMaterial({ map: goalTexture1 });
   const goal1 = new THREE.Mesh(goalGeometry, goalMaterial);
   goal1.position.set(0, 100, 1);
   scene.add(goal1);
   const goalCollider1 = new THREE.Box3().setFromObject(goal1);
-  const goalTexture2 = new THREE.TextureLoader().load('textures/goal.png');
+  const goalTexture2 = new THREE.TextureLoader().load('textures/goal2.png');
   const goalMaterial2 = new THREE.MeshBasicMaterial({ map: goalTexture2 });
   const goal2 = new THREE.Mesh(goalGeometry, goalMaterial2);
   goal2.position.set(0, -100, 1);
@@ -297,7 +295,7 @@
       scene.remove(scoreTextMesh); // Retirer l'ancien texte de la scène
     }
 
-    const loaderTextLocal = new THREE.FontLoader();
+    loaderTextLocal = new THREE.FontLoader();
     loaderTextLocal.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function (font) {
       const geometryTextLocal = new THREE.TextGeometry(`Score: Team 1: ${scoreTeam1} - Team 2: ${scoreTeam2}`, {
         font: font,
@@ -309,7 +307,13 @@
 
       const materialTextLocal = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
       const scoreTextMeshLocal = new THREE.Mesh(geometryTextLocal, materialTextLocal);
-      scoreTextMeshLocal.position.set(-9, 4, 0);
+      scoreTextMeshLocal.position.set(0, 4, 10);
+      // set rotation point center to the center of the text
+      scoreTextMeshLocal.geometry.center();
+      // rotation of the text
+      scoreTextMeshLocal.rotation.x = Math.PI / 2;
+      // size of the text
+      scoreTextMeshLocal.scale.set(10, 10, 10);
       scene.add(scoreTextMeshLocal);
       scoreTextMesh = scoreTextMeshLocal;
 
@@ -378,6 +382,10 @@
     loaderPlayer.setDRACOLoader( dracoLoader );
     loaderPlayer.load( 'models/gltf/ferrari.glb', function ( gltf ) {
       const carModelPlayer = gltf.scene.children[ 0 ];
+      // Car
+      const carMaterial = new THREE.MeshPhysicalMaterial( {
+        color: player.team == 1 ? "red" : "orange", metalness: 1.0, roughness: 0.5, clearcoat: 1.0, clearcoatRoughness: 0.03
+      } );
       carModelPlayer.getObjectByName( 'body' ).material = carMaterial;
       carModelPlayer.getObjectByName( 'rim_fl' ).material = detailsCarMaterial;
       carModelPlayer.getObjectByName( 'rim_fr' ).material = detailsCarMaterial;
@@ -421,8 +429,6 @@
 
     carModel = gltf.scene.children[ 0 ];
 
-    carModel.getObjectByName( 'body' ).material = carMaterial;
-
     carModel.getObjectByName( 'rim_fl' ).material = detailsCarMaterial;
     carModel.getObjectByName( 'rim_fr' ).material = detailsCarMaterial;
     carModel.getObjectByName( 'rim_rr' ).material = detailsCarMaterial;
@@ -453,12 +459,17 @@
     carModel.position.y = 0;
     carModel.position.x = (Math.random() * 50) - 25;
 
-    scene.add( carModel );
-
     players[socket.id] = carModel;
     colliders[socket.id] = new THREE.Box3().setFromObject(carModel);
     // emit the new player to the server
-    socket.emit('playerStartInfos', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id });
+    socket.emit('playerStartInfos', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id }, (team) => {
+      playerTeam = team;
+      const carMaterial = new THREE.MeshPhysicalMaterial( {
+        color: team == 1 ? "red" : "orange", metalness: 1.0, roughness: 0.5, clearcoat: 1.0, clearcoatRoughness: 0.03
+      } );
+      carModel.getObjectByName( 'body' ).material = carMaterial;
+      scene.add( carModel );
+    });
   } );
 
   function moveCar() {
@@ -727,6 +738,13 @@
     });
   }
 
+  function refreshTextDirection() {
+    if (scoreTextMesh) {
+      // modifier l'angle du texte pour qu'il soit toujours face à la caméra
+        scoreTextMesh.rotation.y = camera.rotation.y;
+    }
+  }
+
   const desiredFPS = 60;  // Le nombre d'images par seconde souhaité
   const timeStep = 1000 / desiredFPS;  // Temps en millisecondes entre chaque frame (16.67ms pour 60fps)
   let lastFrameTime = 0;
@@ -763,6 +781,7 @@
       detectCollisions();
       updateCamera();
       checkCameraDistance(); // Vérifiez la distance à chaque frame
+      refreshTextDirection();
 
       checkGoal();
 

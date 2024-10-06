@@ -40,7 +40,7 @@ io.on('connection', (socket) => {
     socket.emit('score', {team1: score.team1, team2: score.team2});
 
     // get infos from player
-    socket.on('playerStartInfos', (data) => {
+    socket.on('playerStartInfos', (data, fn) => {
         players[socket.id] = {
             x: data.x,
             y: data.y,
@@ -53,7 +53,8 @@ io.on('connection', (socket) => {
         } else {
             players[socket.id].team = 1;
         }
-        io.sockets.emit("players", players);
+        io.sockets.emit("players", players)
+        fn(players[socket.id].team);
     });
 
     // Envoyer la position des objets lorsque le client demande une mise à jour
