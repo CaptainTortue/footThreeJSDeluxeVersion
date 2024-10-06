@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link id="cssLink" rel="stylesheet" href="styles.css">
   <title>Jeu de Foot avec Three.js</title>
   <style>
     body { margin: 0; }
@@ -10,6 +11,21 @@
   </style>
 </head>
 <body>
+<div class="lobby">
+  <div class="containers">
+    <div id="pseudoForm">
+      <h2>Choisis ton pseudo</h2>
+      <input type="text" id="pseudoInput" placeholder="Entrer votre pseudo">
+      <button id="joinButton">Rejoindre le lobby</button>
+    </div>
+
+    <div id="lobby" class="hidden">
+      <h2>Joueurs Connectés</h2>
+      <ul id="playersList"></ul>
+      <button id="play-button">Jouer</button>
+    </div>
+  </div>  
+</div>
 <div id="container"></div>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -41,10 +57,56 @@
       }
     `
   };
+    // Initialiser Socket.IO
+    const socket = io("http://localhost:5000");
 
-  // Initialiser Socket.IO
-  const socket = io("http://localhost:5000");
 
+    let Play = false;
+
+    const cssLink = document.getElementById('cssLink');
+    const pseudoForm = document.getElementById('pseudoForm');
+    const joinButton = document.getElementById('joinButton');
+    const pseudoInput = document.getElementById('pseudoInput');
+    const playbutton = document.getElementById('play-button');
+    const lobby = document.getElementById('lobby');
+    const playersList = document.getElementById('playersList');
+
+    joinButton.addEventListener('click', () => {
+      const pseudo = pseudoInput.value.trim();
+      if (pseudo) {
+        // Envoyer le pseudo au serveur
+        socket.emit('setPseudo', pseudo);
+
+        // Afficher le lobby et cacher le formulaire
+        pseudoForm.classList.add('hidden');
+        lobby.classList.remove('hidden');
+      }
+    });
+    
+  
+   // Mettre à jour la liste des joueurs
+   socket.on('listUpdate', (players) => {
+    playersList.innerHTML = '';
+    for (const id in players) {
+      const li = document.createElement('li');
+      console.log(players[id]);
+      li.textContent = players[id].pseudo;
+      playersList.appendChild(li);
+    }
+  });
+
+  playbutton.addEventListener('click', () => {
+      lobby.classList.add('hidden');
+      // Désactiver le fichier CSS
+      cssLink.disabled = true;
+      const lobbyContainer = document.querySelector('.lobby');
+      lobbyContainer.remove();
+      Play = true;
+      initGame();
+    });
+
+
+function initGame() {
   // Initialiser la scène
   const scene = new THREE.Scene();
   scene.background = new THREE.Color( 0x333333 );
@@ -64,12 +126,10 @@
 
   //initialiser les var de la balle
 
-  const sizeBall = 0.5;
-  const gravity = -0.002;
+  const gravity = -0.008;
   let velocity = new THREE.Vector3(0, 0, 0); //Pour la balle
   const damping = 0.98; // Pour réduire la vitesse
   const restitution = 0.4;
-  const carPushForce = 0.1;
 
   // Initialiser le rendu
   const renderer = new THREE.WebGLRenderer();
@@ -468,13 +528,13 @@
     let moveVector = new THREE.Vector3();
     // if player key advance is pressed, upgrad the advancePower
     if (keyStates['KeyW'] || keyStates['ArrowUp']) {
-      moveAdvanceSpeed = (moveAdvanceSpeed + 0.001 > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + 0.001;
+      moveAdvanceSpeed = (moveAdvanceSpeed + 0.005 > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + 0.005;
     } else {
       moveAdvanceSpeed = (moveAdvanceSpeed - 0.002 < 0) ? 0 : moveAdvanceSpeed - 0.002;
     }
     // if player key backward is pressed, upgrad the advancePower
     if (keyStates['KeyS'] || keyStates['ArrowDown']) {
-      moveBackwardSpeed = (moveBackwardSpeed - 0.001 < maxBackwardSpeed) ? maxBackwardSpeed : moveBackwardSpeed - 0.001;
+      moveBackwardSpeed = (moveBackwardSpeed - 0.005 < maxBackwardSpeed) ? maxBackwardSpeed : moveBackwardSpeed - 0.005;
     } else {
       moveBackwardSpeed = (moveBackwardSpeed + 0.002 > 0) ? 0 : moveBackwardSpeed + 0.002;
     }
@@ -565,18 +625,24 @@
     }
   }
 
-  function refreshCameraPosition() {
-    if (carModel) {
-      camera.position.x = carModel.position.x;
-      camera.position.y = carModel.position.y;
-      // Appliquer les mouvements de la souris à la caméra
-      angleX = mouseDeltaX;
-      angleY = mouseDeltaY;
-      // Calculer la position de la caméra en coordonnées sphériques pour orbiter autour da la voiture
-      camera.position.x += radius * Math.cos(angleY) * Math.sin(angleX);
-      camera.position.y += radius * Math.sin(angleY);  // Déplacement vertical avec l'angle Y
-      camera.position.z = radius * Math.cos(angleY) * Math.cos(angleX);
-      camera.lookAt(carModel.position);  // Faire en sorte que la caméra regarde toujours la voiture
+  const offset = new THREE.Vector3(0, -10, 5); // Position de la caméra par rapport à la voiture (derrière et au-dessus en Z).
+  const followSpeed = 0.05; // Vitesse de rattrapage de la caméra.
+  const rotationSpeed = 0.05; // Vitesse de rotation de la caméra pour suivre la voiture.
+
+  function updateCamera() {
+    if (carModel){
+      const voiturePosition = carModel.position.clone();
+      const voitureRotationY = carModel.rotation.y;
+
+      const rotatedOffset = new THREE.Vector3(
+          offset.x * Math.cos(voitureRotationY) - offset.y * Math.sin(voitureRotationY),
+          offset.x * Math.sin(voitureRotationY) + offset.y * Math.cos(voitureRotationY),
+          offset.z 
+      );
+      const desiredPosition = voiturePosition.add(rotatedOffset);
+      camera.position.lerp(desiredPosition, followSpeed);
+      const desiredRotation = new THREE.Euler(camera.rotation.x, voitureRotationY, camera.rotation.z);
+      camera.rotation.y += rotationSpeed * (desiredRotation.y - camera.rotation.y);
     }
   }
 
@@ -723,13 +789,6 @@
     });
   }
 
-  const elapsedTime = clock.getElapsedTime();
-  grassUniforms.iTime.value = elapsedTime;
-
-  updateBallPhysics()
-  detectCollisions();
-  refreshCameraPosition();
-
   const desiredFPS = 60;  // Le nombre d'images par seconde souhaité
   const timeStep = 1000 / desiredFPS;  // Temps en millisecondes entre chaque frame (16.67ms pour 60fps)
   let lastFrameTime = 0;
@@ -764,7 +823,7 @@
 
       updateBallPhysics()
       detectCollisions();
-      refreshCameraPosition();
+      updateCamera();
       checkCameraDistance(); // Vérifiez la distance à chaque frame
 
       checkGoal();
@@ -792,6 +851,9 @@
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
+
+}
+
 </script>
 </body>
 </html>
