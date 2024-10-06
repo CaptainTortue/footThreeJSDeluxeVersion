@@ -15,6 +15,7 @@ const ball = {
     y: 0,
     z: -.5
 }
+let NombrePerssone = 0;
 
 const PORT = 5000;
 
@@ -45,7 +46,8 @@ io.on('connection', (socket) => {
         players[socket.id].y = data.y; // Met à jour y
         players[socket.id].z = data.z; // Met à jour z
         players[socket.id].angle = data.angle;
-
+        players[socket.id].enter = NombrePerssone;
+        NombrePerssone++;
         if (Object.entries(players).filter( infos => infos[1].team === 1).length > Object.entries(players).filter(infos => infos[1].team === 2).length) {
             players[socket.id].team = 2;
         } else {
@@ -58,10 +60,13 @@ io.on('connection', (socket) => {
 
         // send score
         socket.emit('score', {team1: score.team1, team2: score.team2});
-        fn(players[socket.id].team);
+        fn(players[socket.id].team,players[socket.id].enter);
 
     });
 
+    socket.on('ballplayer',(data) => {
+        socket.broadcast.emit('ballplayer',(data));
+    })
     // Envoyer la position des objets lorsque le client demande une mise à jour
     socket.on('move', (data) => {
         players[socket.id].x = data.x;
