@@ -40,23 +40,27 @@ io.on('connection', (socket) => {
     });
 
     // get infos from player
-    socket.on('playerStartInfos', (data) => {
+    socket.on('playerStartInfos', (data, fn) => {
         players[socket.id].id = socket.id
         players[socket.id].x = data.x; // Met à jour x
         players[socket.id].y = data.y; // Met à jour y
         players[socket.id].z = data.z; // Met à jour z
         players[socket.id].angle = data.angle;
+
         if (Object.entries(players).filter( infos => infos[1].team === 1).length > Object.entries(players).filter(infos => infos[1].team === 2).length) {
             players[socket.id].team = 2;
         } else {
             players[socket.id].team = 1;
         }
+
         io.sockets.emit("players", players);
         // emit ball position
         socket.emit('ballPosition', {x: ball.x, y: ball.y, z: ball.z});
 
         // send score
         socket.emit('score', {team1: score.team1, team2: score.team2});
+        fn(players[socket.id].team);
+
     });
 
     // Envoyer la position des objets lorsque le client demande une mise à jour
