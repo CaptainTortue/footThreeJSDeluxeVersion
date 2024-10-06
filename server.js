@@ -33,6 +33,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 io.on('connection', (socket) => {
     //console.log('Un joueur s\'est connecté :', socket.id);
 
+    console.log("ball", ball, ball.x, ball.y, ball.z)
     // emit ball position
     socket.emit('ballPosition', {x: ball.x, y: ball.y, z: ball.z});
 
@@ -72,16 +73,6 @@ io.on('connection', (socket) => {
         console.log(data)
         // Diffuser la position de la balle et des cubes aux autres clients
         socket.broadcast.emit('collision', data);
-    });
-
-    socket.on('updateBall', () => {
-        if (ball.z  - .5 <= 0) { // La balle touche le sol
-            ball.z  = .5; // La balle ne passe pas sous le sol
-        } else {
-            ball.z  -= 0.02; // La balle tombe
-        }
-        socket.broadcast.emit('ballMoved', {x: ball.x, y: ball.y, z: ball.z});
-        //fn({x: ball.x, y: ball.y, z: ball.z});
     });
 
     socket.on('ballMoved', (data) => {
