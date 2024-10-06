@@ -429,7 +429,7 @@ function initGame() {
 
     updateBoundingBox();
     // Émettre la nouvelle position de la voiture au serveur
-    socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle, id: socket.id });
+    socket.emit('move', { x: carModel.position.x, y: carModel.position.y, z: carModel.position.z, angle, id: socket.id });
     if (wheels) {
       for (let i = 0; i < wheels.length; i++) {
         wheels[i].rotation.x = moveAdvanceSpeed * Math.PI * 2;
@@ -566,7 +566,7 @@ function initGame() {
   socket.on('playerMoved', (user) => {
     if (players[user.id] !== undefined) {
       // Mettre à jour la position du joueur
-      players[user.id].position.set(user.x, user.y, -.5);
+      players[user.id].position.set(user.x, user.y, user.z);
       // Mettre à jour l'angle du joueur
       players[user.id].rotation.y = user.angle;
     }
