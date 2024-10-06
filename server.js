@@ -31,31 +31,35 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Lorsqu'un client se connecte
 io.on('connection', (socket) => {
-    //console.log('Un joueur s\'est connecté :', socket.id);
 
-    console.log("ball", ball, ball.x, ball.y, ball.z)
-    // emit ball position
-    socket.emit('ballPosition', {x: ball.x, y: ball.y, z: ball.z});
-
-    // send score
-    socket.emit('score', {team1: score.team1, team2: score.team2});
+     // Ajouter un joueur après qu'il ait choisi son pseudo
+    socket.on('setPseudo', (pseudo) => {
+        players[socket.id] = { pseudo: pseudo };
+        io.emit('listUpdate', players);
+    });
 
     // get infos from player
     socket.on('playerStartInfos', (data, fn) => {
-        players[socket.id] = {
-            x: data.x,
-            y: data.y,
-            z: data.z,
-            id: socket.id,
-            angle: data.angle
-        }
+        players[socket.id].id = socket.id
+        players[socket.id].x = data.x; // Met à jour x
+        players[socket.id].y = data.y; // Met à jour y
+        players[socket.id].z = data.z; // Met à jour z
+        players[socket.id].angle = data.angle;
+
         if (Object.entries(players).filter( infos => infos[1].team === 1).length > Object.entries(players).filter(infos => infos[1].team === 2).length) {
             players[socket.id].team = 2;
         } else {
             players[socket.id].team = 1;
         }
-        io.sockets.emit("players", players)
+
+        io.sockets.emit("players", players);
+        // emit ball position
+        socket.emit('ballPosition', {x: ball.x, y: ball.y, z: ball.z});
+
+        // send score
+        socket.emit('score', {team1: score.team1, team2: score.team2});
         fn(players[socket.id].team);
+
     });
 
     // Envoyer la position des objets lorsque le client demande une mise à jour
