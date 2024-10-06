@@ -5,6 +5,10 @@ const path = require('path');
 const server = require("http").createServer(app);
 
 const players = {};
+let score = {
+    team1: 0,
+    team2: 0
+}
 
 const ball = {
     x: 0,
@@ -30,8 +34,10 @@ io.on('connection', (socket) => {
     //console.log('Un joueur s\'est connecté :', socket.id);
 
     // emit ball position
-    console.log('ballPosition', {x: ball.x, y: ball.y, z: ball.z})
     socket.emit('ballPosition', {x: ball.x, y: ball.y, z: ball.z});
+
+    // send score
+    socket.emit('score', {team1: score.team1, team2: score.team2});
 
     // get infos from player
     socket.on('playerStartInfos', (data) => {
@@ -88,7 +94,8 @@ io.on('connection', (socket) => {
 
     socket.on('goal', (data) => {
         // Diffuser la position de la balle et des cubes aux autres clients
-        socket.broadcast.emit('goal', data);
+        score[`team${data.team}`] += 1;
+        io.sockets.emit('score', {team1: score.team1, team2: score.team2});
     })
 
     // Lorsqu'un client se déconnecte
