@@ -33,6 +33,7 @@
   import { RGBELoader } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/loaders/RGBELoader.js';
   import { DRACOLoader } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/loaders/DRACOLoader.js';
   import { GLTFLoader } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/loaders/GLTFLoader.js';
+  import { OBB } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/math/OBB.js';
   const clock = new THREE.Clock();
   const STEPS_PER_FRAME = 5;
 
@@ -270,6 +271,8 @@ function initGame() {
   let maxAdvanceSpeed = .5;  // Maximum speed of the car
   let moveBackwardSpeed = 0;  // Variable to store the movement power of the car
   let maxBackwardSpeed = -.5;  // Maximum speed of the car
+  const goalWidth = 50;  // Largeur des cages de but
+  const goalHeight = 20;  // Hauteur des cages de but
   let keyStates = {};
   // Liste des cubes joueurs et colliders
   const players = {};
@@ -277,9 +280,162 @@ function initGame() {
   let playerTeam;
   let scoreTeam1 = 0;
   let scoreTeam2 = 0;
+  let timeBetweenGoals = 0;
 
   let angleColision = 0;
   let pushForce = 0;
+  const acceleration = 0.005; // Acceleration de la voiture
+  const deceleration = 0.002; // Décélération de la voiture
+  let inTheAir = false; // Variable pour vérifier si le joueur est en l'air
+  const jumpMaxPower = 1.7; // Puissance de saut de la voiture
+  const jumpMinPower = 0.8; // Puissance de saut minimale de la voiture
+  const jumpDeceleration = 0.05; // Décélération du saut de la voiture
+  let jumpForce = 0; // Force de saut au moment t de la voiture
+  const jumpChargeAcceleration = 0.05; // Accélération de la charge du saut
+  let timeJumpKeyPresed = 0; // Temps de pression de la touche de saut
+  const gravityCar = 0.4; // Gravité de la voiture
+
+  function getAccelerationCar() {
+    return (inTheAir ? acceleration : acceleration/2);
+  }
+
+  function getDecelerationCar() {
+    return (inTheAir ? deceleration : deceleration/2);
+  }
+
+  function gravityCarMovement() {
+    if (carModel.position.z > -.5) {
+      carModel.position.z -= gravityCar;
+      inTheAir = true;
+    } else {
+      inTheAir = false;
+    }
+  }
+
+  function jumpMouvement() {
+    if (jumpForce > 0) {
+      carModel.position.z += jumpForce;
+      jumpForce -= jumpDeceleration;
+    }
+  }
+
+  function moveCar() {
+    if (!carModel) return;
+    let moveVector = new THREE.Vector3();
+    gravityCarMovement();
+    jumpMouvement();
+    const accelerationCar = getAccelerationCar();
+    const decelerationCar = getDecelerationCar();
+    // if player key advance is pressed, upgrad the advancePower
+    if (keyStates['KeyW'] || keyStates['ArrowUp']) {
+      moveAdvanceSpeed = (moveAdvanceSpeed + accelerationCar  > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + accelerationCar;
+    } else {
+      moveAdvanceSpeed = (moveAdvanceSpeed - decelerationCar < 0) ? 0 : moveAdvanceSpeed - decelerationCar;
+    }
+    // if player key backward is pressed, upgrad the advancePower
+    if (keyStates['KeyS'] || keyStates['ArrowDown']) {
+      moveBackwardSpeed = (moveBackwardSpeed - acceleration < maxBackwardSpeed) ? maxBackwardSpeed : moveBackwardSpeed - acceleration;
+    } else {
+      moveBackwardSpeed = (moveBackwardSpeed + decelerationCar > 0) ? 0 : moveBackwardSpeed + decelerationCar;
+    }
+    // if jump key is pressed, upgrad the advancePower
+    if (!keyStates['Space'] && timeJumpKeyPresed > 0) {
+      if (!inTheAir) {
+        // Calculer la force de saut, entre la puissance maximale et minimale, suivant le temps de pression de la touche
+        jumpForce = Math.max(Math.min(timeJumpKeyPresed, jumpMaxPower), jumpMinPower);
+        inTheAir = true;
+      }
+      timeJumpKeyPresed = 0;
+    }
+    if (keyStates['Space']) {
+      timeJumpKeyPresed += jumpChargeAcceleration;
+    }
+    let angle = carModel.rotation.y;
+    // Calculer le vecteur de mouvement en fonction de l'angle de la voiture
+    if (moveBackwardSpeed !== 0 || moveAdvanceSpeed !== 0) {
+      // Récupérer l'angle actuel de la voiture
+
+      // Déterminer la direction du déplacement
+      let direction = new THREE.Vector3(Math.sin(-angle), Math.cos(-angle), 0);
+
+      // Ajouter la vitesse dans la direction calculée
+      moveVector.addScaledVector(direction, moveAdvanceSpeed + moveBackwardSpeed);
+
+      // Appliquer le mouvement à la position actuelle
+      carModel.position.add(moveVector);
+
+      // Rotation de la voiture en fonction des touches gauche et droite
+      if (keyStates['KeyD'] || keyStates['ArrowRight']) {
+        carModel.rotation.y -= (moveAdvanceSpeed + moveBackwardSpeed) / 10;
+      }
+      if (keyStates['KeyA'] || keyStates['ArrowLeft']) {
+        carModel.rotation.y += (moveAdvanceSpeed + moveBackwardSpeed) / 10;
+      }
+    }
+    if (pushForce != 0) {
+      // Déterminer la direction du déplacement
+      let direction = new THREE.Vector3(Math.sin(-angleColision), Math.cos(-angleColision), 0);
+
+      // Ajouter la vitesse dans la direction calculée
+      moveVector.addScaledVector(direction, pushForce);
+
+      // Appliquer le mouvement à la position actuelle
+      carModel.position.add(moveVector);
+      if (pushForce > 0) {
+        pushForce -= 0.01;
+      } else if (pushForce < 0) {
+        pushForce += 0.01;
+      }
+    }
+    updateOBB();
+    // Collision avec les murs
+    let collisionDetected = false;
+    let wallNormal = new THREE.Vector3();
+
+    if (carModel.collider.intersectsBox3(wall1Collider)) {
+      collisionDetected = true;
+      wallNormal.set(0, 1, 0);  // normale pour le mur 1 (haut)
+    } else if (carModel.collider.intersectsBox3(wall2Collider)) {
+      collisionDetected = true;
+      wallNormal.set(0, 1, 0);  // normale pour le mur 2 (gauche)
+    } else if (carModel.collider.intersectsBox3(wall3Collider)) {
+      collisionDetected = true;
+      wallNormal.set(1, 0, 0);   // normale pour le mur 3 (bas)
+    } else if (carModel.collider.intersectsBox3(wall4Collider)) {
+      collisionDetected = true;
+      wallNormal.set(1, 0, 0);   // normale pour le mur 4 (droite)
+    }
+
+    if (collisionDetected) {
+
+      let bondAngle = moveAdvanceSpeed > moveBackwardSpeed ? angle : -angle;
+      // Calculer la direction actuelle de la voiture
+      let direction = new THREE.Vector3(Math.sin(bondAngle), Math.cos(bondAngle), 0);
+
+      // Calculer la réflexion (rebond)
+      let reflection = new THREE.Vector3().subVectors(direction, wallNormal.multiplyScalar(2 * direction.dot(wallNormal)));
+
+      // Mettre à jour l'angle en fonction de la réflexion
+      angleColision = Math.atan2(reflection.x, reflection.y);
+
+      // Appliquer une force de rebond
+      pushForce = (moveAdvanceSpeed + moveBackwardSpeed) * 2;
+
+      // Réduire la vitesse pour simuler une perte d'énergie lors du rebond
+      moveAdvanceSpeed *= 0.5;
+      moveBackwardSpeed *= 0.5;
+    }
+
+
+    updateBoundingBox();
+    // Émettre la nouvelle position de la voiture au serveur
+    socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle, id: socket.id });
+    if (wheels) {
+      for (let i = 0; i < wheels.length; i++) {
+        wheels[i].rotation.x = moveAdvanceSpeed * Math.PI * 2;
+      }
+    }
+  }
 
   const wallTexture = new THREE.TextureLoader().load('textures/wall.png');
 
@@ -336,16 +492,16 @@ function initGame() {
 
   // Ajouter les cages de but
   const goalTexture1 = new THREE.TextureLoader().load('textures/goal1.png');
-  const goalGeometry = new THREE.BoxGeometry(10, 2, 2);
+  const goalGeometry = new THREE.BoxGeometry(goalWidth, 2, goalHeight);
   const goalMaterial = new THREE.MeshBasicMaterial({ map: goalTexture1 });
   const goal1 = new THREE.Mesh(goalGeometry, goalMaterial);
-  goal1.position.set(0, 100, 1);
+  goal1.position.set(0, 100, goalHeight/2-.5);
   scene.add(goal1);
   const goalCollider1 = new THREE.Box3().setFromObject(goal1);
   const goalTexture2 = new THREE.TextureLoader().load('textures/goal2.png');
   const goalMaterial2 = new THREE.MeshBasicMaterial({ map: goalTexture2 });
   const goal2 = new THREE.Mesh(goalGeometry, goalMaterial2);
-  goal2.position.set(0, -100, 1);
+  goal2.position.set(0, -100, goalHeight/2-.5);
   scene.add(goal2);
   const goalCollider2 = new THREE.Box3().setFromObject(goal2);
 
@@ -369,7 +525,7 @@ function initGame() {
 
       const materialTextLocal = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
       const scoreTextMeshLocal = new THREE.Mesh(geometryTextLocal, materialTextLocal);
-      scoreTextMeshLocal.position.set(0, 4, 10);
+      scoreTextMeshLocal.position.set(0, 4, 20);
       // set rotation point center to the center of the text
       scoreTextMeshLocal.geometry.center();
       // rotation of the text
@@ -392,7 +548,9 @@ function initGame() {
   });
 
   socket.on("ballPosition", (ballPosition) => {
+    console.log("start position", ballPosition);
     ball.position.set(ballPosition.x, ballPosition.y, ballPosition.z);
+    ball.name = "ball";
     scene.add(ball);
   });
 
@@ -411,12 +569,12 @@ function initGame() {
       players[user.id].position.set(user.x, user.y, -.5);
       // Mettre à jour l'angle du joueur
       players[user.id].rotation.y = user.angle;
-      colliders[user.id].setFromObject(players[user.id]); // Mettre à jour le collider
     }
   });
 
   // Mise à jour de la position de la balle
     socket.on('ballMoved', (ballPosition) => {
+      console.log("ball moving", ballPosition);
         ball.position.set(ballPosition.x, ballPosition.y, ballPosition.z);
     });
 
@@ -434,6 +592,7 @@ function initGame() {
     socket.on('score', (data) => {
         scoreTeam1 = data.team1;
         scoreTeam2 = data.team2;
+        timeBetweenGoals = 0;
         updateScoreText()
     });
 
@@ -457,10 +616,10 @@ function initGame() {
       carModelPlayer.getObjectByName( 'glass' ).material = glassCarMaterial;
       const wheelsPlayer = [];
       wheelsPlayer.push(
-              carModel.getObjectByName( 'wheel_fl' ),
-              carModel.getObjectByName( 'wheel_fr' ),
-              carModel.getObjectByName( 'wheel_rl' ),
-              carModel.getObjectByName( 'wheel_rr' )
+              carModelPlayer.getObjectByName( 'wheel_fl' ),
+              carModelPlayer.getObjectByName( 'wheel_fr' ),
+              carModelPlayer.getObjectByName( 'wheel_rl' ),
+              carModelPlayer.getObjectByName( 'wheel_rr' )
       );
       // shadow
       const meshPlayer = new THREE.Mesh(
@@ -479,7 +638,12 @@ function initGame() {
       // angle of the car
       carModelPlayer.rotation.y = player.angle;
       players[player.id] = carModelPlayer;
-      colliders[player.id] = new THREE.Box3().setFromObject(carModelPlayer);
+      colliders[player.id] = new OBB().fromBox3(new THREE.Box3().setFromObject(carModelPlayer));
+      console.log(colliders[player.id]);
+      //console.log(carModelPlayer);
+      // log size of the car
+      //console.log(colliders[player.id]);
+      // set collider in the scene
       scene.add( carModelPlayer );
     });
   }
@@ -522,7 +686,11 @@ function initGame() {
     carModel.position.x = (Math.random() * 50) - 25;
 
     players[socket.id] = carModel;
+    carModel.collider = new OBB();
+    carModel.collider.set(new THREE.Vector3(), new THREE.Vector3(1, 1, 1), new THREE.Matrix4());
     colliders[socket.id] = new THREE.Box3().setFromObject(carModel);
+    //colliders[socket.id] = new OBB().fromBox3(new THREE.Box3().setFromObject(carModel));
+    //console.log(colliders);
     // emit the new player to the server
     socket.emit('playerStartInfos', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id }, (team) => {
       playerTeam = team;
@@ -534,107 +702,36 @@ function initGame() {
     });
   } );
 
-  function moveCar() {
-    if (!carModel) return;
-    let moveVector = new THREE.Vector3();
-    // if player key advance is pressed, upgrad the advancePower
-    if (keyStates['KeyW'] || keyStates['ArrowUp']) {
-      moveAdvanceSpeed = (moveAdvanceSpeed + 0.005 > maxAdvanceSpeed) ? maxAdvanceSpeed : moveAdvanceSpeed + 0.005;
-    } else {
-      moveAdvanceSpeed = (moveAdvanceSpeed - 0.002 < 0) ? 0 : moveAdvanceSpeed - 0.002;
+  // Mettre à jour l'OBB après chaque mouvement ou rotation
+  function updateOBB() {
+    if (carModel) {
+      // Copier la position et l'orientation du modèle de la voiture
+      carModel.collider.center.copy(carModel.position);
+      carModel.collider.halfSize.set(1, 1, 2);  // Ajuster les dimensions en fonction de la taille de la voiture
+
+      // Mettre à jour l'orientation du collider OBB avec la rotation de la voiture
+      let rotationMatrix = new THREE.Matrix4();
+      rotationMatrix.makeRotationFromEuler(carModel.rotation);
+      carModel.collider.rotation = rotationMatrix;
     }
-    // if player key backward is pressed, upgrad the advancePower
-    if (keyStates['KeyS'] || keyStates['ArrowDown']) {
-      moveBackwardSpeed = (moveBackwardSpeed - 0.005 < maxBackwardSpeed) ? maxBackwardSpeed : moveBackwardSpeed - 0.005;
-    } else {
-      moveBackwardSpeed = (moveBackwardSpeed + 0.002 > 0) ? 0 : moveBackwardSpeed + 0.002;
-    }
-    let angle = carModel.rotation.y;
-    // Calculer le vecteur de mouvement en fonction de l'angle de la voiture
-    if (moveBackwardSpeed !== 0 || moveAdvanceSpeed !== 0) {
-      // Récupérer l'angle actuel de la voiture
+  }
 
-      // Déterminer la direction du déplacement
-      let direction = new THREE.Vector3(Math.sin(-angle), Math.cos(-angle), 0);
+  // Mettre à jour les colliders OBB de chaque joueurs
+    function updateOBBPalyers() {
+        for (let id in colliders) {
+          if (id != socket.id) {
+            colliders[id].center.copy(players[id].position);
+            colliders[id].halfSize.set(1, 1, 2);
 
-      // Ajouter la vitesse dans la direction calculée
-      moveVector.addScaledVector(direction, moveAdvanceSpeed + moveBackwardSpeed);
+            let rotationMatrix = new THREE.Matrix4();
+            rotationMatrix.makeRotationFromEuler(players[id].rotation);
+            colliders[id].rotation = rotationMatrix;
 
-      // Appliquer le mouvement à la position actuelle
-      carModel.position.add(moveVector);
-
-      // Rotation de la voiture en fonction des touches gauche et droite
-      if (keyStates['KeyD'] || keyStates['ArrowRight']) {
-        carModel.rotation.y -= (moveAdvanceSpeed + moveBackwardSpeed) / 10;
-      }
-      if (keyStates['KeyA'] || keyStates['ArrowLeft']) {
-        carModel.rotation.y += (moveAdvanceSpeed + moveBackwardSpeed) / 10;
-      }
-    }
-    if (pushForce != 0) {
-        // Déterminer la direction du déplacement
-        let direction = new THREE.Vector3(Math.sin(-angleColision), Math.cos(-angleColision), 0);
-
-        // Ajouter la vitesse dans la direction calculée
-        moveVector.addScaledVector(direction, pushForce);
-
-        // Appliquer le mouvement à la position actuelle
-        carModel.position.add(moveVector);
-        if (pushForce > 0) {
-          pushForce -= 0.01;
-        } else if (pushForce < 0) {
-          pushForce += 0.01;
+            //console.log(colliders[id].rotation, players[id].rotation, rotationMatrix);
+          }
         }
     }
 
-    updateBoundingBox();
-    // Collision avec les murs
-    let collisionDetected = false;
-    let wallNormal = new THREE.Vector3();
-
-    if (carBoundingBox.intersectsBox(wall1Collider)) {
-      collisionDetected = true;
-      wallNormal.set(0, 1, 0);  // normale pour le mur 1 (haut)
-    } else if (carBoundingBox.intersectsBox(wall2Collider)) {
-      collisionDetected = true;
-      wallNormal.set(0, 1, 0);  // normale pour le mur 2 (gauche)
-    } else if (carBoundingBox.intersectsBox(wall3Collider)) {
-      collisionDetected = true;
-      wallNormal.set(1, 0, 0);   // normale pour le mur 3 (bas)
-    } else if (carBoundingBox.intersectsBox(wall4Collider)) {
-      collisionDetected = true;
-      wallNormal.set(1, 0, 0);   // normale pour le mur 4 (droite)
-    }
-
-    if (collisionDetected) {
-
-      let bondAngle = moveAdvanceSpeed > moveBackwardSpeed ? angle : -angle;
-      // Calculer la direction actuelle de la voiture
-      let direction = new THREE.Vector3(Math.sin(bondAngle), Math.cos(bondAngle), 0);
-
-      // Calculer la réflexion (rebond)
-      let reflection = new THREE.Vector3().subVectors(direction, wallNormal.multiplyScalar(2 * direction.dot(wallNormal)));
-
-      // Mettre à jour l'angle en fonction de la réflexion
-      angleColision = Math.atan2(reflection.x, reflection.y);
-
-      // Appliquer une force de rebond
-      pushForce = (moveAdvanceSpeed + moveBackwardSpeed) * 2;
-
-      // Réduire la vitesse pour simuler une perte d'énergie lors du rebond
-      moveAdvanceSpeed *= 0.5;
-      moveBackwardSpeed *= 0.5;
-    }
-
-
-    // Émettre la nouvelle position de la voiture au serveur
-    socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle, id: socket.id });
-    if (wheels) {
-      for (let i = 0; i < wheels.length; i++) {
-        wheels[i].rotation.x = moveAdvanceSpeed * Math.PI * 2;
-      }
-    }
-  }
 
   const offset = new THREE.Vector3(0, -10, 5); // Position de la caméra par rapport à la voiture (derrière et au-dessus en Z).
   const followSpeed = 0.05; // Vitesse de rattrapage de la caméra.
@@ -690,75 +787,87 @@ function initGame() {
   });
 
   function updateBallPhysics() {
-    const oldPosition = ball.position.clone();
-    // Ajouter l'effet de gravité sur la vitesse verticale
-    velocity.z += gravity;
+    // check if the ball is in the scene
+    if (scene.getObjectByName('ball')) {
+      const oldPosition = ball.position.clone();
+      // Ajouter l'effet de gravité sur la vitesse verticale
+      velocity.z += gravity;
 
-    // Appliquer la vitesse à la position de la balle
-    ball.position.add(velocity);
+      // Appliquer la vitesse à la position de la balle
+      ball.position.add(velocity);
 
-    // Gérer les collisions avec le terrain (rebonds sur l'axe Y)
-    if (ball.position.z  - 0.5 <= 0) { // La balle touche le sol
-      ball.position.z  = 0.5; // La balle ne passe pas sous le sol
-      velocity.z  = -velocity.z  * restitution; // Inverser la vitesse et appliquer le coefficient de restitution
-    }
+      // Gérer les collisions avec le terrain (rebonds sur l'axe Y)
+      if (ball.position.z - 0.5 <= 0) { // La balle touche le sol
+        ball.position.z = 0.5; // La balle ne passe pas sous le sol
+        velocity.z = -velocity.z * restitution; // Inverser la vitesse et appliquer le coefficient de restitution
+      }
 
-    // gérer les collisions avec les murs
-    let collisionDetected = false;
-    let wallNormal = new THREE.Vector3();
-    if (ballBoundingSphere.intersectsBox(wall1Collider)) {
-      collisionDetected = true;
-      wallNormal.set(0, 1, 0);  // normale pour le mur 1 (haut)
-    } else if (ballBoundingSphere.intersectsBox(wall2Collider)) {
-      collisionDetected = true;
-      wallNormal.set(0, 1, 0);  // normale pour le mur 2 (gauche)
-    } else if (ballBoundingSphere.intersectsBox(wall3Collider)) {
-      collisionDetected = true;
-      wallNormal.set(1, 0, 0);   // normale pour le mur 3 (bas)
-    } else if (ballBoundingSphere.intersectsBox(wall4Collider)) {
-      collisionDetected = true;
-      wallNormal.set(1, 0, 0);   // normale pour le mur 4 (droite)
-    }
+      // gérer les collisions avec les murs
+      let collisionDetected = false;
+      let wallNormal = new THREE.Vector3();
+      if (ballBoundingSphere.intersectsBox(wall1Collider)) {
+        collisionDetected = true;
+        wallNormal.set(0, 1, 0);  // normale pour le mur 1 (haut)
+      } else if (ballBoundingSphere.intersectsBox(wall2Collider)) {
+        collisionDetected = true;
+        wallNormal.set(0, 1, 0);  // normale pour le mur 2 (gauche)
+      } else if (ballBoundingSphere.intersectsBox(wall3Collider)) {
+        collisionDetected = true;
+        wallNormal.set(1, 0, 0);   // normale pour le mur 3 (bas)
+      } else if (ballBoundingSphere.intersectsBox(wall4Collider)) {
+        collisionDetected = true;
+        wallNormal.set(1, 0, 0);   // normale pour le mur 4 (droite)
+      }
 
-    if (collisionDetected) {
-      // Calculer la réflexion (rebond)
-      let reflection = new THREE.Vector3().subVectors(velocity, wallNormal.multiplyScalar(2 * velocity.dot(wallNormal)));
-      // Appliquer la réflexion à la vitesse
-      velocity.copy(reflection);
-    }
+      if (collisionDetected) {
+        // Calculer la réflexion (rebond)
+        let reflection = new THREE.Vector3().subVectors(velocity, wallNormal.multiplyScalar(2 * velocity.dot(wallNormal)));
+        // Appliquer la réflexion à la vitesse
+        velocity.copy(reflection);
+      }
 
-    // Gérer la friction horizontale (ralentissement)
-    velocity.x *= damping;
-    velocity.y *= damping;
+      // Gérer la friction horizontale (ralentissement)
+      velocity.x *= damping;
+      velocity.y *= damping;
 
-    if (oldPosition.distanceTo(ball.position) > 0.01) {
-      // Émettre la position de la balle au serveur
-      socket.emit('ballMoved', { x: ball.position.x, y: ball.position.y, z: ball.position.z });
+      if (oldPosition.distanceTo(ball.position) > 0.01) {
+        console.log("position ball", oldPosition);
+        // Émettre la position de la balle au serveur
+        socket.emit('ballMoved', {x: ball.position.x, y: ball.position.y, z: ball.position.z});
+      }
     }
   }
 
   const ballBoundingSphere = new THREE.Sphere(ball.position, 1);
-  let carBoundingBox = new THREE.Box3();
+  let carBoundingBox = new OBB();
 
 
   function updateBoundingBox() {
       if (carModel) {
-          carBoundingBox.setFromObject(carModel);
+          /*carBoundingBox.setFromObject(carModel);
+          // if carBoundingBox not in the scene, add it
+            if (!scene.getObjectByName('carBoundingBox')) {
+                scene.add(new THREE.Box3Helper(carBoundingBox, 0xffff00));
+            }*/
       }
   }
 
   // Collision detection function
   function detectCollisions() {
-      updateBoundingBox();
+      //updateBoundingBox();
+      updateOBB();
+      updateOBBPalyers();
 
-      if (carBoundingBox.intersectsSphere(ballBoundingSphere)) {
-          const collisionNormal = new THREE.Vector3().subVectors(ball.position, carModel.position).normalize();
-          velocity.add(collisionNormal.multiplyScalar(Math.abs(moveAdvanceSpeed + moveBackwardSpeed)));
+      if (carModel && carModel.collider.intersectsSphere(ballBoundingSphere)) {
+        const collisionNormal = new THREE.Vector3().subVectors(ball.position, carModel.position).normalize();
+        velocity.add(collisionNormal.multiplyScalar(Math.abs(moveAdvanceSpeed + moveBackwardSpeed)));
       }
+
 
       // colision with other cars
       for (let id in colliders) {
-          if (carBoundingBox.intersectsBox(colliders[id]) && id !== socket.id) {
+        //console.log(id, colliders[id]);
+          if (id !== socket.id && carModel.collider.intersectsOBB(colliders[id]))  {
               const tempvar = moveAdvanceSpeed;
               moveAdvanceSpeed = -moveBackwardSpeed;
               moveBackwardSpeed = -tempvar;
@@ -811,21 +920,28 @@ function initGame() {
   const timeStep = 1000 / desiredFPS;  // Temps en millisecondes entre chaque frame (16.67ms pour 60fps)
   let lastFrameTime = 0;
 
+  function updateTimer() {
+    timeBetweenGoals += 0.1;
+  }
+
   function checkGoal() {
-    // if ball collide with goal 1
-    if (goalCollider1.intersectsSphere(ballBoundingSphere)) {
-      console.log('Goal 1');
-      ball.position.set(0, 0, 1);
-      // emit goal
-      socket.emit('goal', { team: 1 });
-    }
-    // if ball collide with goal 2
-    if (goalCollider2.intersectsSphere(ballBoundingSphere)) {
-      console.log('Goal 2');
-      ball.position.set(0, 0, 1);
-      socket.emit('ballMoved', { x: ball.position.x, y: ball.position.y, z: ball.position.z });
-      // emit goal
-      socket.emit('goal', { team: 2 });
+    if (timeBetweenGoals > 5) {
+      // if ball collide with goal 1
+      if (goalCollider1.intersectsSphere(ballBoundingSphere)) {
+        ball.position.set(0, 0, 1);
+        velocity.set(0, 0, 0);
+        socket.emit('ballMoved', { x: ball.position.x, y: ball.position.y, z: ball.position.z });
+        // emit goal
+        socket.emit('goal', { team: 1 });
+      }
+      // if ball collide with goal 2
+      if (goalCollider2.intersectsSphere(ballBoundingSphere)) {
+        ball.position.set(0, 0, 1);
+        velocity.set(0, 0, 0);
+        socket.emit('ballMoved', { x: ball.position.x, y: ball.position.y, z: ball.position.z });
+        // emit goal
+        socket.emit('goal', { team: 2 });
+      }
     }
   }
 
@@ -846,6 +962,7 @@ function initGame() {
       refreshTextDirection();
 
       checkGoal();
+      updateTimer();
 
       renderer.render(scene, camera);
     }
