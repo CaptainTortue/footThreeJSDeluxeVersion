@@ -36,7 +36,7 @@
   import { OBB } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/math/OBB.js';
   const clock = new THREE.Clock();
   const STEPS_PER_FRAME = 5;
-
+  let PlayerIdHote = null;
   const grassShader = {
     vert: `
       varying vec2 vUv;
@@ -572,7 +572,6 @@ function initGame() {
 
   // Mise à jour de la position de la balle
     socket.on('ballMoved', (ballPosition) => {
-      console.log("ball moving", ballPosition);
         ball.position.set(ballPosition.x, ballPosition.y, ballPosition.z);
     });
 
@@ -636,6 +635,11 @@ function initGame() {
       // angle of the car
       carModelPlayer.rotation.y = player.angle;
       players[player.id] = carModelPlayer;
+      players[player.id].enter = player.enter;
+      checkplayerhost();
+      console.log("enter",players[player.id].enter);
+      carModelPlayer.collider = new OBB();
+      carModelPlayer.collider.set(new THREE.Vector3(), new THREE.Vector3(1, 1, 1), new THREE.Matrix4());
       colliders[player.id] = new OBB().fromBox3(new THREE.Box3().setFromObject(carModelPlayer));
       console.log(colliders[player.id]);
       //console.log(carModelPlayer);
@@ -689,12 +693,13 @@ function initGame() {
     //colliders[socket.id] = new OBB().fromBox3(new THREE.Box3().setFromObject(carModel));
     //console.log(colliders);
     // emit the new player to the server
-    socket.emit('playerStartInfos', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id }, (team) => {
+    socket.emit('playerStartInfos', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id }, (team,enter) => {
       playerTeam = team;
       const carMaterial = new THREE.MeshPhysicalMaterial( {
         color: team == 1 ? "red" : "orange", metalness: 1.0, roughness: 0.5, clearcoat: 1.0, clearcoatRoughness: 0.03
       } );
       carModel.getObjectByName( 'body' ).material = carMaterial;
+      players[socket.id].enter = enter ; 
       scene.add( carModel );
     });
   } );
@@ -837,9 +842,7 @@ function initGame() {
       // Gérer la friction horizontale (ralentissement)
       velocity.x *= damping;
       velocity.y *= damping;
-
-      if (oldPosition.distanceTo(ball.position) > 0.01) {
-        console.log("position ball", oldPosition);
+      if (oldPosition.distanceTo(ball.position) > 0.01 && PlayerIdHote === socket.id) {
         // Émettre la position de la balle au serveur
         socket.emit('ballMoved', {x: ball.position.x, y: ball.position.y, z: ball.position.z});
       }
@@ -847,18 +850,21 @@ function initGame() {
   }
 
   const ballBoundingSphere = new THREE.Sphere(ball.position, 1);
-
+  
   // Collision detection function
   function detectCollisions() {
       //updateBoundingBox();
       updateOBB();
       updateOBBPalyers();
-
+      
       if (carModel && carModel.collider.intersectsSphere(ballBoundingSphere)) {
         const collisionNormal = new THREE.Vector3().subVectors(ball.position, carModel.position).normalize();
+        const speedball = Math.abs(moveAdvanceSpeed + moveBackwardSpeed) ;
+        console.log("asasasa",Math.abs(speedball))
+        socket.emit('ballplayer',{speedball: speedball, id: socket.id});
         velocity.add(collisionNormal.multiplyScalar(Math.abs(moveAdvanceSpeed + moveBackwardSpeed)));
       }
-
+      
 
       // colision with other cars
       for (let id in colliders) {
@@ -876,7 +882,13 @@ function initGame() {
           }
       }
   }
-
+  socket.on('ballplayer',(data) => {
+    if(data.id !== socket){
+    const collisionNormals = new THREE.Vector3().subVectors(ball.position, players[data.id].position).normalize();
+    console.log("hello",Math.abs(data.speedball))
+    velocity.add(collisionNormals.multiplyScalar(Math.abs(data.speedball)));
+    }
+  })
 
 
   // Vérifiez la distance entre la caméra et les murs
@@ -910,10 +922,25 @@ function initGame() {
         scoreTextMesh.rotation.y = camera.rotation.y;
     }
   }
+  
+  function checkplayerhost(){
+    let minEnterValue = 100000000000000;
+    for (const id in players) {
+      if(players[id].enter){
+        console.log(players[id].enter)
+        if (players[id].enter < minEnterValue) {
+          minEnterValue = players[id].enter;
+          PlayerIdHote = id;
+        }
+      }
+    }
+  }
 
   const desiredFPS = 60;  // Le nombre d'images par seconde souhaité
   const timeStep = 1000 / desiredFPS;  // Temps en millisecondes entre chaque frame (16.67ms pour 60fps)
   let lastFrameTime = 0;
+
+  
 
   function updateTimer() {
     timeBetweenGoals += 0.1;
@@ -950,7 +977,7 @@ function initGame() {
       ball.rotation.x += 0.01;
       ball.rotation.y += 0.01;
 
-      updateBallPhysics()
+      updateBallPhysics();
       detectCollisions();
       updateCamera();
       checkCameraDistance(); // Vérifiez la distance à chaque frame
