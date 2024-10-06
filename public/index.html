@@ -426,8 +426,6 @@ function initGame() {
       moveBackwardSpeed *= 0.5;
     }
 
-
-    updateBoundingBox();
     // Émettre la nouvelle position de la voiture au serveur
     socket.emit('move', { x: carModel.position.x, y: carModel.position.y, z: carModel.position.z, angle, id: socket.id });
     if (wheels) {
@@ -542,7 +540,7 @@ function initGame() {
   socket.on('players', (serverPlayers) => {
     for (let id in serverPlayers) {
       if (!players[id]) {
-        players[id] = createPlayer(serverPlayers[id]);
+        createPlayer(serverPlayers[id]);
       }
     }
   });
@@ -688,7 +686,6 @@ function initGame() {
     players[socket.id] = carModel;
     carModel.collider = new OBB();
     carModel.collider.set(new THREE.Vector3(), new THREE.Vector3(1, 1, 1), new THREE.Matrix4());
-    colliders[socket.id] = new THREE.Box3().setFromObject(carModel);
     //colliders[socket.id] = new OBB().fromBox3(new THREE.Box3().setFromObject(carModel));
     //console.log(colliders);
     // emit the new player to the server
@@ -726,8 +723,6 @@ function initGame() {
             let rotationMatrix = new THREE.Matrix4();
             rotationMatrix.makeRotationFromEuler(players[id].rotation);
             colliders[id].rotation = rotationMatrix;
-
-            //console.log(colliders[id].rotation, players[id].rotation, rotationMatrix);
           }
         }
     }
@@ -742,15 +737,28 @@ function initGame() {
       const voiturePosition = carModel.position.clone();
       const voitureRotationY = carModel.rotation.y;
 
-      const rotatedOffset = new THREE.Vector3(
-          offset.x * Math.cos(voitureRotationY) - offset.y * Math.sin(voitureRotationY),
-          offset.x * Math.sin(voitureRotationY) + offset.y * Math.cos(voitureRotationY),
-          offset.z 
-      );
-      const desiredPosition = voiturePosition.add(rotatedOffset);
-      camera.position.lerp(desiredPosition, followSpeed);
-      const desiredRotation = new THREE.Euler(camera.rotation.x, voitureRotationY, camera.rotation.z);
-      camera.rotation.y += rotationSpeed * (desiredRotation.y - camera.rotation.y);
+      if (moveAdvanceSpeed >= -moveBackwardSpeed) {
+        const rotatedOffset = new THREE.Vector3(
+                offset.x * Math.cos(voitureRotationY) - offset.y * Math.sin(voitureRotationY),
+                offset.x * Math.sin(voitureRotationY) + offset.y * Math.cos(voitureRotationY),
+                offset.z
+        );
+        const desiredPosition = voiturePosition.add(rotatedOffset);
+        camera.position.lerp(desiredPosition, followSpeed);
+        const desiredRotation = new THREE.Euler(camera.rotation.x, voitureRotationY, camera.rotation.z);
+        camera.rotation.y += rotationSpeed * (desiredRotation.y - camera.rotation.y);
+      } else {
+        // set camera position to see the car in the other side
+        const rotatedOffset = new THREE.Vector3(
+                -(offset.x * Math.cos(voitureRotationY) - offset.y * Math.sin(voitureRotationY)),
+                -(offset.x * Math.sin(voitureRotationY) + offset.y * Math.cos(voitureRotationY)),
+                offset.z
+        );
+        const desiredPosition = voiturePosition.add(rotatedOffset);
+        camera.position.lerp(desiredPosition, followSpeed);
+        const desiredRotation = new THREE.Euler(camera.rotation.x, voitureRotationY + Math.PI, camera.rotation.z);
+        camera.rotation.y += rotationSpeed * (desiredRotation.y - camera.rotation.y);
+      }
     }
   }
 
@@ -839,18 +847,6 @@ function initGame() {
   }
 
   const ballBoundingSphere = new THREE.Sphere(ball.position, 1);
-  let carBoundingBox = new OBB();
-
-
-  function updateBoundingBox() {
-      if (carModel) {
-          /*carBoundingBox.setFromObject(carModel);
-          // if carBoundingBox not in the scene, add it
-            if (!scene.getObjectByName('carBoundingBox')) {
-                scene.add(new THREE.Box3Helper(carBoundingBox, 0xffff00));
-            }*/
-      }
-  }
 
   // Collision detection function
   function detectCollisions() {
@@ -873,7 +869,6 @@ function initGame() {
               moveBackwardSpeed = -tempvar;
               const collisionNormal = new THREE.Vector3().subVectors(carModel.position, players[id].position).normalize();
               carModel.position.add(collisionNormal.multiplyScalar(0.1));
-              colliders[socket.id].setFromObject(carModel);
 
               // emit the new position of the car to the server
               //socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id });
