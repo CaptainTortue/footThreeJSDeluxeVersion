@@ -220,6 +220,8 @@
   // Liste des cubes joueurs et colliders
   const players = {};
   const colliders = {};
+  let scoreTeam1 = 0;
+  let scoreTeam2 = 0;
 
   let angleColision = 0;
   let pushForce = 0;
@@ -248,14 +250,14 @@
   // set rotaion
   wall1.rotation.x = Math.PI / 2;
   // set position
-  wall1.position.set(0, 100, 45);
+  wall1.position.set(0, 100, 49.5);
   scene.add(wall1);
   // add colider
   const wall1Collider = new THREE.Box3().setFromObject(wall1);
 
   const wall2 = new THREE.Mesh(wallGeometry, createWallMaterial());
   wall2.rotation.x = -(Math.PI / 2);
-  wall2.position.set(0, -100, 45); // Ajustez la position si nécessaire
+  wall2.position.set(0, -100, 49.5); // Ajustez la position si nécessaire
   scene.add(wall2);
   const wall2Collider = new THREE.Box3().setFromObject(wall2);
 
@@ -263,41 +265,59 @@
   const wall3 = new THREE.Mesh(wallGeometry, createWallMaterial());
   wall3.rotation.x = Math.PI / 2;
   wall3.rotation.y = -(Math.PI / 2);
-  wall3.position.set(100, 0, 45);
+  wall3.position.set(100, 0, 49.5);
   scene.add(wall3);
   const wall3Collider = new THREE.Box3().setFromObject(wall3);
 
   const wall4 = new THREE.Mesh(wallGeometry, createWallMaterial());
   wall4.rotation.x = Math.PI / 2;
   wall4.rotation.y = Math.PI / 2;
-  wall4.position.set(-100, 0, 45);
+  wall4.position.set(-100, 0, 49.5);
   scene.add(wall4);
   const wall4Collider = new THREE.Box3().setFromObject(wall4);
 
-  // Vérifiez la distance entre la caméra et les murs
-  function checkCameraDistance() {
-    const distanceThreshold = 150; // Distance où le mur devient complètement visible
-    const fadeDistance = 50; // Distance où le mur commence à apparaître
+  // Ajouter les cages de but
+  const goalTexture1 = new THREE.TextureLoader().load('textures/goal.png');
+  const goalGeometry = new THREE.BoxGeometry(10, 2, 2);
+  const goalMaterial = new THREE.MeshBasicMaterial({ map: goalTexture1 });
+  const goal1 = new THREE.Mesh(goalGeometry, goalMaterial);
+  goal1.position.set(0, 100, 1);
+  scene.add(goal1);
+  const goalCollider1 = new THREE.Box3().setFromObject(goal1);
+  const goalTexture2 = new THREE.TextureLoader().load('textures/goal.png');
+  const goalMaterial2 = new THREE.MeshBasicMaterial({ map: goalTexture2 });
+  const goal2 = new THREE.Mesh(goalGeometry, goalMaterial2);
+  goal2.position.set(0, -100, 1);
+  scene.add(goal2);
+  const goalCollider2 = new THREE.Box3().setFromObject(goal2);
 
-    const cameraPosition = camera.position;
+  // Texte de score
+  let scoreTextMesh; // Variable pour stocker le mesh du texte
 
-    [wall1, wall2, wall3, wall4].forEach(wall => {
-      const distance = wall.position.distanceTo(cameraPosition);
+  function updateScoreText() {
+    if (scoreTextMesh) {
+      scene.remove(scoreTextMesh); // Retirer l'ancien texte de la scène
+    }
 
-      if (distance < distanceThreshold) {
-        // Calculez l'opacité en fonction de la distance
-        if (distance < fadeDistance) {
-          wall.material.opacity = 1; // Complètement opaque
-        } else {
-          // Interpole l'opacité entre 0 et 1
-          wall.material.opacity = 1 - (distance - fadeDistance) / (distanceThreshold - fadeDistance);
-        }
-        wall.material.visible = true; // Montre le mur
-      } else {
-        wall.material.visible = false; // Cache le mur
-      }
+    const loaderTextLocal = new THREE.FontLoader();
+    loaderTextLocal.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function (font) {
+      const geometryTextLocal = new THREE.TextGeometry(`Score: Team 1: ${scoreTeam1} - Team 2: ${scoreTeam2}`, {
+        font: font,
+        size: 0.5,
+        height: 0.1,
+        curveSegments: 12,
+        bevelEnabled: false
+      });
+
+      const materialTextLocal = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+      const scoreTextMeshLocal = new THREE.Mesh(geometryTextLocal, materialTextLocal);
+      scoreTextMeshLocal.position.set(-9, 4, 0);
+      scene.add(scoreTextMeshLocal);
+      scoreTextMesh = scoreTextMeshLocal;
+
     });
   }
+
   /* socket */
   socket.on('players', (serverPlayers) => {
     for (let id in serverPlayers) {
@@ -343,30 +363,15 @@
       angleColision = data.angle;
       pushForce = data.pushForce * 1.25;
 
-      /*
-      // Déterminer la direction du déplacement
-      let direction = new THREE.Vector3(Math.sin(-data.angle), Math.cos(-data.angle), 0);
-
-      let moveVector = new THREE.Vector3();
-      // Ajouter la vitesse dans la direction calculée
-      moveVector.addScaledVector(direction, data.pushForce);
-
-      // Appliquer le mouvement à la position actuelle
-      carModel.position.add(moveVector);
-
-
-      // Appliquer la force dans la direction opposée
-      //const pushVector = oppositeDirection.multiplyScalar(data.pushForce*10);
-      //moveVector.addScaledVector(direction, moveAdvanceSpeed + moveBackwardSpeed);
-
-      // Modifier la position de la voiture (repoussée dans la direction opposée au mouvement de l'autre voiture)
-
-      // Optionnel: Mettre à jour la position sur le serveur
-      socket.emit('move', { x: carModel.position.x, y: carModel.position.y, angle: carModel.rotation.y, id: socket.id });
-      */
-
     }
   });
+
+  // Score
+    socket.on('score', (data) => {
+        scoreTeam1 = data.team1;
+        scoreTeam2 = data.team2;
+        updateScoreText()
+    });
 
   /* fin socket */
 
@@ -690,16 +695,62 @@
           }
       }
   }
-    const elapsedTime = clock.getElapsedTime();
-    grassUniforms.iTime.value = elapsedTime;
 
-    updateBallPhysics()
-    detectCollisions();
-    refreshCameraPosition();
+
+
+  // Vérifiez la distance entre la caméra et les murs
+  function checkCameraDistance() {
+    const distanceThreshold = 150; // Distance où le mur devient complètement visible
+    const fadeDistance = 50; // Distance où le mur commence à apparaître
+
+    const cameraPosition = camera.position;
+
+    [wall1, wall2, wall3, wall4].forEach(wall => {
+      const distance = wall.position.distanceTo(cameraPosition);
+
+      if (distance < distanceThreshold) {
+        // Calculez l'opacité en fonction de la distance
+        if (distance < fadeDistance) {
+          wall.material.opacity = 1; // Complètement opaque
+        } else {
+          // Interpole l'opacité entre 0 et 1
+          wall.material.opacity = 1 - (distance - fadeDistance) / (distanceThreshold - fadeDistance);
+        }
+        wall.material.visible = true; // Montre le mur
+      } else {
+        wall.material.visible = false; // Cache le mur
+      }
+    });
+  }
+
+  const elapsedTime = clock.getElapsedTime();
+  grassUniforms.iTime.value = elapsedTime;
+
+  updateBallPhysics()
+  detectCollisions();
+  refreshCameraPosition();
 
   const desiredFPS = 60;  // Le nombre d'images par seconde souhaité
   const timeStep = 1000 / desiredFPS;  // Temps en millisecondes entre chaque frame (16.67ms pour 60fps)
   let lastFrameTime = 0;
+
+  function checkGoal() {
+    // if ball collide with goal 1
+    if (goalCollider1.intersectsSphere(ballBoundingSphere)) {
+      console.log('Goal 1');
+      ball.position.set(0, 0, 1);
+      // emit goal
+      socket.emit('goal', { team: 1 });
+    }
+    // if ball collide with goal 2
+    if (goalCollider2.intersectsSphere(ballBoundingSphere)) {
+      console.log('Goal 2');
+      ball.position.set(0, 0, 1);
+      socket.emit('ballMoved', { x: ball.position.x, y: ball.position.y, z: ball.position.z });
+      // emit goal
+      socket.emit('goal', { team: 2 });
+    }
+  }
 
   // Fonction d'animation
   function animate(time) {
@@ -715,6 +766,8 @@
       detectCollisions();
       refreshCameraPosition();
       checkCameraDistance(); // Vérifiez la distance à chaque frame
+
+      checkGoal();
 
       renderer.render(scene, camera);
     }
