@@ -16,6 +16,7 @@ const ball = {
     z: -.5
 }
 let NombrePerssone = 0;
+let idGame;
 
 const PORT = 5000;
 
@@ -93,9 +94,11 @@ io.on('connection', (socket) => {
         //fn({x: ball.x, y: ball.y, z: ball.z});
     });
 
-    socket.on('goal', (data) => {
+    socket.on('goal', async (data) => {
         // Diffuser la position de la balle et des cubes aux autres clients
         score[`team${data.team}`] += 1;
+        // add score in bdd
+        await incrementScore(data.team);
         io.sockets.emit('score', {team1: score.team1, team2: score.team2});
     })
 
@@ -111,6 +114,49 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(PORT, () => {
-    console.log("listening on PORT: ", PORT);
+server.listen(PORT, async () => {
+    try {
+        idGame = await createGame();
+        console.log("Serveur prêt sur le port :", PORT);
+    } catch (error) {
+        console.error("Erreur lors de la création du jeu :", error);
+    }
 });
+
+async function createGame() {
+    try {
+        const response = await fetch("http://localhost:3000/game", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+        });
+
+        if (!response.ok) {
+            throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.idGame;
+    } catch (error) {
+        console.error("Erreur lors de la création du jeu :", error);
+        throw error; // Relance l'erreur si nécessaire
+    }
+}
+
+async function incrementScore(team) {
+    try {
+        const response = await fetch("http://localhost:3000/score/increment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idGame, team }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log("Score mis à jour :", data);
+    } catch (error) {
+        console.error("Erreur lors de l'incrémentation du score :", error);
+    }
+}
