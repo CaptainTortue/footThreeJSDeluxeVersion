@@ -111,7 +111,7 @@ function initGame() {
   // Initialiser la scène
   const scene = new THREE.Scene();
   scene.background = new THREE.Color( 0x333333 );
-  scene.environment = new RGBELoader().load( '/textures/venice_sunset_1k.hdr' );
+  scene.environment = new RGBELoader().load( 'textures/venice_sunset_1k.hdr' );
   scene.environment.mapping = THREE.EquirectangularReflectionMapping;
   //scene.fog = new THREE.Fog( 0x333333, 10, 15 );
 
