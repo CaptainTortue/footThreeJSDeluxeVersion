@@ -12,6 +12,13 @@ const scoreIncrementLimiter = rateLimit({
   message: { error: "Too many requests, please try again later." }
 });
 
+// Allow max 60 requests per minute per IP to score GET endpoint
+const scoreGetLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60,
+  message: { error: "Too many requests, please try again later." }
+});
+
 const app = express();
 const PORT = 3000;
 
@@ -51,7 +58,7 @@ app.post("/game", async (req, res) => {
 });
 
 // Récupérer le score d'un joueur
-app.get("/score/:idGame", async (req, res) => {
+app.get("/score/:idGame", scoreGetLimiter, async (req, res) => {
     const { idGame } = req.params;
     try {
         let game = await Game.findOne({ idGame });
