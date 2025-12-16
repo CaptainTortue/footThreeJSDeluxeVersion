@@ -3,6 +3,15 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 
+// Rate limiter for sensitive endpoints
+const rateLimit = require("express-rate-limit");
+// Allow max 10 requests per minute per IP to score increment endpoint
+const scoreIncrementLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // limit each IP to 10 requests per windowMs
+  message: { error: "Too many requests, please try again later." }
+});
+
 const app = express();
 const PORT = 3000;
 
@@ -53,7 +62,7 @@ app.get("/score/:idGame", async (req, res) => {
 });
 
 // Mettre à jour le score d'un joueur
-app.post("/score/increment", async (req, res) => {
+app.post("/score/increment", scoreIncrementLimiter, async (req, res) => {
     let { idGame, team } = req.body;
     console.log(req.body);
     // Validate idGame is a number and not an object
