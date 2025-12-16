@@ -5,12 +5,6 @@ const bodyParser = require("body-parser");
 
 // Rate limiter for sensitive endpoints
 const rateLimit = require("express-rate-limit");
-// Allow max 10 requests per minute per IP to score increment endpoint
-const scoreIncrementLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // limit each IP to 10 requests per windowMs
-  message: { error: "Too many requests, please try again later." }
-});
 
 // Allow max 60 requests per minute per IP to score GET endpoint
 const scoreGetLimiter = rateLimit({
