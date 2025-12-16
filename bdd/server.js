@@ -54,8 +54,13 @@ app.get("/score/:idGame", async (req, res) => {
 
 // Mettre à jour le score d'un joueur
 app.post("/score/increment", async (req, res) => {
-    const { idGame, team } = req.body;
+    let { idGame, team } = req.body;
     console.log(req.body);
+    // Validate idGame is a number and not an object
+    idGame = Number(idGame);
+    if (!Number.isFinite(idGame)) {
+        return res.status(400).json({ error: "Invalid idGame value" });
+    }
     try {
         let game;
         if (team == 1) {
